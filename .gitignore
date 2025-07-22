@@ -1,0 +1,14 @@
+# ملفات التكوين السرية
+config.py
+.env
+/data/
+
+# ملفات بايثون المؤقتة
+__pycache__/
+*.py[cod]
+
+# ملفات النظام والمحررات
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

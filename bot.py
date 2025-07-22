@@ -1,3 +1,5 @@
+import os
+import logging
 from telegram import Update, ReplyParameters
 from telegram.ext import (
     Application,
@@ -8,52 +10,47 @@ from telegram.ext import (
     ConversationHandler
 )
 import json
-import os
 from datetime import datetime
 
-# --- الإعدادات الأساسية ---
-TOKEN = "7949198245:AAHkt-i-lwR9pb5Ix3wvTQBKLFLimIow-34"  # استبدل بتوكن البوت الخاص بك
-ADMIN_ID = "5818029353"  # استبدل بآيدي حسابك (يمكن الحصول عليه من @userinfobot)
+# ------ إعدادات التسجيل ------
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# --- ملفات التخزين ---
-RESPONSES_FILE = "responses.json"
-STATS_FILE = "stats.json"
+# ------ متغيرات البيئة ------
+TOKEN = os.environ['TOKEN']  # سيتم قراءتها من Railway
+ADMIN_ID = os.environ['ADMIN_ID']  # آيدي حسابك كمدير
 
-# --- حالات المحادثة ---
+# ------ حالات المحادثة ------
 ADD_KEYWORD, ADD_RESPONSE = range(2)
 
-# --- تحميل البيانات ---
+# ------ ملفات التخزين ------
+RESPONSES_FILE = "/data/responses.json"  # سيتم تخزينها في Railway's Persistent Storage
+STATS_FILE = "/data/stats.json"
+
+# ------ تحميل البيانات ------
 def load_data(filename, default_data):
-    if os.path.exists(filename):
+    try:
         with open(filename, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            # تحويل القوائم إلى مجموعات إذا لزم الأمر
-            if "total_users" in data and isinstance(data["total_users"], list):
-                data["total_users"] = set(data["total_users"])
-            if "total_groups" in data and isinstance(data["total_groups"], list):
-                data["total_groups"] = set(data["total_groups"])
-            return data
-    return default_data.copy()
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default_data
 
 def save_data(filename, data):
-    # تحويل المجموعات إلى قوائم للتخزين
-    data_to_save = data.copy()
-    if "total_users" in data_to_save and isinstance(data_to_save["total_users"], set):
-        data_to_save["total_users"] = list(data_to_save["total_users"])
-    if "total_groups" in data_to_save and isinstance(data_to_save["total_groups"], set):
-        data_to_save["total_groups"] = list(data_to_save["total_groups"])
-    
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
-# --- إدارة الردود ---
+# ------ إدارة الردود ------
 def load_responses():
     return load_data(RESPONSES_FILE, {})
 
 def save_responses(responses):
     save_data(RESPONSES_FILE, responses)
 
-# --- إدارة الإحصائيات ---
+# ------ إدارة الإحصائيات ------
 def load_stats():
     return load_data(STATS_FILE, {
         "total_users": set(),
@@ -63,9 +60,12 @@ def load_stats():
     })
 
 def save_stats(stats):
-    save_data(STATS_FILE, stats)
+    stats_to_save = stats.copy()
+    stats_to_save["total_users"] = list(stats["total_users"])
+    stats_to_save["total_groups"] = list(stats["total_groups"])
+    save_data(STATS_FILE, stats_to_save)
 
-# --- تحديث الإحصائيات ---
+# ------ تحديث الإحصائيات ------
 def update_stats(update: Update, command: str = None):
     stats = load_stats()
     
@@ -88,7 +88,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# --- معالجة الرسائل ---
+# ------ معالجة الرسائل ------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -113,7 +113,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await message.reply_text(response)
             return
 
-# --- إضافة رد (نظام المحادثة) ---
+# ------ إضافة رد (نظام المحادثة) ------
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != ADMIN_ID:
         await update.message.reply_text("⚠️ ليس لديك صلاحية لإضافة ردود!")
@@ -160,7 +160,7 @@ async def cancel_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("❌ تم إلغاء عملية الإضافة.")
     return ConversationHandler.END
 
-# --- إزالة رد ---
+# ------ إزالة رد ------
 async def remove_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update, "remove")
     
@@ -182,7 +182,7 @@ async def remove_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ لا يوجد رد مسجل للكلمة '{keyword}'")
 
-# --- عرض الردود ---
+# ------ عرض الردود ------
 async def list_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update, "list")
     
@@ -201,7 +201,6 @@ async def list_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message.append(f"\n🔸 {keyword}:")
         message.append(f"   ↳ {response}")
     
-    # تقسيم الرسالة إذا كانت طويلة
     full_message = "\n".join(message)
     if len(full_message) > 4000:
         parts = [full_message[i:i+4000] for i in range(0, len(full_message), 4000)]
@@ -210,7 +209,7 @@ async def list_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(full_message)
 
-# --- الإحصائيات ---
+# ------ الإحصائيات ------
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update, "stats")
     
@@ -238,7 +237,7 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text("\n".join(message))
 
-# --- التحقق من الصلاحيات ---
+# ------ التحقق من الصلاحيات ------
 async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update, "admin")
     
@@ -247,7 +246,7 @@ async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("👤 أنت مستخدم عادي. فقط المدير يمكنه إدارة الردود.")
 
-# --- بدء البوت ---
+# ------ بدء البوت ------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update, "start")
     
@@ -263,19 +262,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/remove <الكلمة> - حذف رد (للمدير فقط)",
         "/list - عرض كل الردود (للمدير فقط)",
         "/stats - إحصائيات البوت (للمدير فقط)",
-        "/admin - التحقق من صلاحياتك",
-
-        "🔧 تم تطوير وبرمجة البوت بواسطة أحمد الغريب",
-"- @Am9li9",
-"📚 مجموعة نقاشات الخطوط ↓",
-"- @ElgharibFonts",
+        "/admin - التحقق من صلاحياتك"
     ]
     
     await update.message.reply_text("\n".join(start_message))
 
-# --- الدالة الرئيسية ---
+# ------ الدالة الرئيسية ------
 def main():
-    application = Application.builder().token(TOKEN).build()
+    # إنشاء تطبيق البوت مع تحسينات الأداء
+    application = Application.builder() \
+        .token(TOKEN) \
+        .pool_timeout(30) \
+        .http_version('1.1') \
+        .get_updates_http_version('1.1') \
+        .build()
     
     # محادثة إضافة الردود
     conv_handler = ConversationHandler(
@@ -296,13 +296,15 @@ def main():
     application.add_handler(CommandHandler("stats", show_stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
+    # تشغيل البوت مع التعامل مع الأخطاء
     application.run_polling()
 
 if __name__ == "__main__":
-    # إنشاء ملفات التخزين إذا لم تكن موجودة
-    if not os.path.exists(RESPONSES_FILE):
-        save_responses({})
-    if not os.path.exists(STATS_FILE):
-        save_stats(load_stats())
+    # إنشاء مجلد التخزين إذا لم يكن موجوداً
+    os.makedirs("/data", exist_ok=True)
     
-    main()
+    # تشغيل البوت
+    try:
+        main()
+    except Exception as e:
+        logger.error(f"حدث خطأ غير متوقع: {e}")

@@ -1,4 +1,4 @@
-from telegram import Update, ReplyParameters, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -139,16 +139,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for keyword, response in responses.items():
         if keyword.lower() in text:
             if message.reply_to_message:
-                reply_params = ReplyParameters(
-                    message_id=message.reply_to_message.message_id,
-                    chat_id=message.chat.id
-                )
-                await context.bot.send_message(
-                    chat_id=message.chat.id,
-                    text=response,
-                    reply_parameters=reply_params,
-                    disable_web_page_preview=True
-                )
+               await context.bot.send_message(
+    chat_id=message.chat.id,
+    text=response,
+    reply_to_message_id=message.reply_to_message.message_id,
+    disable_web_page_preview=True
+)
+
             else:
                 await message.reply_text(
                     response,

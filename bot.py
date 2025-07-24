@@ -136,43 +136,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     responses = load_responses()
     
-    # --- الميزة الجديدة: الكشف عن طلبات الخطوط غير الموجودة ---
-    missing_fonts = []
-    if "خط" in text:
-        words = text.split()
-        for i, word in enumerate(words):
-            if word == "خط" and i + 1 < len(words):
-                font_name = words[i + 1]
-                font_exists = any(font_name.lower() in keyword.lower() for keyword in responses.keys())
-                if not font_exists:
-                    missing_fonts.append(font_name)
-    
     # جمع كل الردود للكلمات المفتاحية الموجودة في الرسالة
     found_responses = []
     for keyword, response in responses.items():
         if keyword.lower() in text:
             found_responses.append(response)
     
-    # بناء الرسالة النهائية
-    final_response = []
-    
-    # إضافة تحذير للخطوط غير الموجودة
-    if missing_fonts:
-        missing_fonts_str = "، ".join(missing_fonts)
-        final_response.append(
-            f"⚠️ عذرًا، الخط/الخطوط التالية غير متوفرة حالياً: {missing_fonts_str}\n"
-            f"سيتم إرسالها لك يدويًا من قبل المشرفين.\n\n"
-            f"أما عن باقي طلبك:\n"
-            f"------------------"
-        )
-    
-    # إضافة الردود الموجودة
+    # إذا وجدنا ردوداً
     if found_responses:
-        final_response.append("\n\n".join(found_responses))
-    
-    # إرسال الرد النهائي إذا كان هناك محتوى
-    if final_response:
-        combined_response = "\n".join(final_response)
+        # دمج الردود مع فصل بينها
+        combined_response = "\n\n".join(found_responses)
         
         if message.reply_to_message:
             await context.bot.send_message(
@@ -188,37 +161,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
     
-    # إذا لم يكن هناك ردود ولكن هناك خطوط مفقودة
-    elif missing_fonts:
-        missing_fonts_str = "، ".join(missing_fonts)
-        response = (
-            f"عذرًا، الخط/الخطوط التالية غير متوفرة حالياً:\n"
-            f"{missing_fonts_str}\n\n"
-            f"سيتم إرسالها لك يدويًا من قبل المشرفين.\n\n"
-            f"تحياتي،\n"
-            f"بوت أحمد الغريب"
-        )
-        await message.reply_text(
-            response,
-            disable_web_page_preview=True
-        )
-        return
-# --- إضافة رد (نظام المحادثة) ---
-async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) not in ADMINS:
-        await update.message.reply_text(
-            "⚠️ ليس لديك صلاحية لإضافة ردود!",
-            disable_web_page_preview=True
-        )
-        return ConversationHandler.END
-    
-    await update.message.reply_text(
-        "📝 الرجاء إرسال الكلمة المفتاحية التي تريد إضافة رد لها:\n"
-        "أو /cancel لإلغاء العملية",
-        disable_web_page_preview=True
-    )
-    return ADD_KEYWORD
-
+    # --- الميزة الجديدة: الكشف عن طلبات الخطوط غير الموجودة ---
+    if "خط" in text:
+        # استخراج اسم الخط المطلوب (بعد كلمة "خط")
+        words = text.split()
+        line_index = words.index("خط") if "خط" in words else -1
+        if line_index != -1 and line_index + 1 < len(words):
+            font_name = words[line_index + 1]
+            
+            # التحقق مما إذا كان اسم الخط غير موجود في الردود
+            font_exists = any(font_name.lower() in keyword.lower() for keyword in responses.keys())
+            if not font_exists:
+                response = (
+                    "عُذرًا، هذا الخط غير منشور في القناة، "
+                    "سيتم إرساله لك يدويًا من قبل المُشرفين.\n\n"
+                    "تحياتي،\n"
+                    "بوت أحمد الغريب"
+                )
+                await message.reply_text(
+                    response,
+                    disable_web_page_preview=True
+                )
+                return
 async def add_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyword = update.message.text
     context.user_data["temp_keyword"] = keyword

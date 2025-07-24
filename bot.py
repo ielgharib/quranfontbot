@@ -114,7 +114,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# ---  تعديل معالجة الرسائل ---
+# ---  تعديل 1 معالجة الرسائل ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -160,7 +160,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 disable_web_page_preview=True
             )
         return
-
+    
+    # --- الميزة الجديدة: الكشف عن طلبات الخطوط غير الموجودة ---
+    if "خط" in text:
+        # استخراج اسم الخط المطلوب (بعد كلمة "خط")
+        words = text.split()
+        line_index = words.index("خط") if "خط" in words else -1
+        if line_index != -1 and line_index + 1 < len(words):
+            font_name = words[line_index + 1]
+            
+            # التحقق مما إذا كان اسم الخط غير موجود في الردود
+            font_exists = any(font_name.lower() in keyword.lower() for keyword in responses.keys())
+            if not font_exists:
+                response = (
+                    "عُذرًا، هذا الخط غير منشور في القناة، "
+                    "سيتم إرساله لك يدويًا من قبل المُشرفين.\n\n"
+                    "تحياتي،\n"
+                    "بوت أحمد الغريب"
+                )
+                await message.reply_text(
+                    response,
+                    disable_web_page_preview=True
+                )
+                return
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) not in ADMINS:

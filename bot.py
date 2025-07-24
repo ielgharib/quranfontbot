@@ -132,20 +132,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_notification(context, update.effective_user)
     
     message = update.message
-    text = message.text.lower() if message.text else ""
-    
+    original_text = message.text if message.text else ""
     responses = load_responses()
-    
-    # جمع كل الردود للكلمات المفتاحية الموجودة في الرسالة
+
+    # تحضير قوائم الردود
     found_responses = []
-    for keyword, response in responses.items():
-        if keyword.lower() in text:
-            found_responses.append(response)
+    used_positions = set()  # لتجنب التداخل بين الكلمات
+
+    # البحث عن الكلمات المفتاحية بترتيب طولها (من الأطول إلى الأقصر)
+    sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
     
-    # إذا وجدنا ردوداً
+    for keyword in sorted_keywords:
+        if keyword in original_text:
+            start_pos = original_text.find(keyword)
+            end_pos = start_pos + len(keyword)
+            
+            # التحقق من عدم تداخل هذه الكلمة مع كلمات سبق الرد عليها
+            overlap = False
+            for (used_start, used_end) in used_positions:
+                if not (end_pos <= used_start or start_pos >= used_end):
+                    overlap = True
+                    break
+            
+            if not overlap:
+                found_responses.append({
+                    'position': start_pos,
+                    'response': responses[keyword],
+                    'keyword': keyword
+                })
+                used_positions.add((start_pos, end_pos))
+    
+    # ترتيب الردود حسب ظهورها في النص الأصلي
+    found_responses.sort(key=lambda x: x['position'])
+    
+    # إرسال الرد الموحد
     if found_responses:
-        # دمج الردود مع فصل بينها
-        combined_response = "\n\n".join(found_responses)
+        combined_response = "\n\n".join([item['response'] for item in found_responses])
         
         if message.reply_to_message:
             await context.bot.send_message(
@@ -159,7 +181,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 combined_response,
                 disable_web_page_preview=True
             )
-        return
+    return
 
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):

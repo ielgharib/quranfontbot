@@ -114,7 +114,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# --- معالجة الرسائل ---
+# ---  تعديل معالجة الرسائل ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -136,22 +136,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     responses = load_responses()
     
+    # جمع كل الردود للكلمات المفتاحية الموجودة في الرسالة
+    found_responses = []
     for keyword, response in responses.items():
         if keyword.lower() in text:
-            if message.reply_to_message:
-               await context.bot.send_message(
-    chat_id=message.chat.id,
-    text=response,
-    reply_to_message_id=message.reply_to_message.message_id,
-    disable_web_page_preview=True
-)
-
-            else:
-                await message.reply_text(
-                    response,
-                    disable_web_page_preview=True
-                )
-            return
+            found_responses.append(response)
+    
+    # إذا وجدنا ردوداً
+    if found_responses:
+        # دمج الردود مع فصل بينها
+        combined_response = "\n\n".join(found_responses)
+        
+        if message.reply_to_message:
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=combined_response,
+                reply_to_message_id=message.reply_to_message.message_id,
+                disable_web_page_preview=True
+            )
+        else:
+            await message.reply_text(
+                combined_response,
+                disable_web_page_preview=True
+            )
+        return
 
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):

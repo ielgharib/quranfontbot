@@ -253,7 +253,7 @@ async def remove_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not context.args:
         await update.message.reply_text(
-            "استخدم الأمر هكذا: /remove <الكلمة>",
+            "استخدم الأمر هكذا: .ازالة <الكلمة>",
             disable_web_page_preview=True
         )
         return
@@ -565,8 +565,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start_message.extend([
             "",
             "⚙️ الأوامر الإدارية:",
-            "/add - إضافة رد جديد",
-            "/remove <الكلمة> - حذف رد",
+            ".اضافة - إضافة رد جديد",
+            ".ازالة <الكلمة> - حذف رد",
             "/list - عرض كل الردود",
             "/stats - إحصائيات البوت",
             "/users - عرض المستخدمين",
@@ -590,9 +590,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TOKEN).build()
     
-    # محادثة إضافة الردود
+    # محادثة إضافة الردود (تم تغيير الأمر من add إلى اضافة)
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("add", start_add_response)],
+        entry_points=[CommandHandler("اضافة", start_add_response)],
         states={
             ADD_KEYWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_keyword)],
             ADD_RESPONSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_response_text)]
@@ -615,7 +615,7 @@ def main():
     application.add_handler(conv_handler)
     application.add_handler(broadcast_conv)
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("remove", remove_response))
+    application.add_handler(CommandHandler("ازالة", remove_response))
     application.add_handler(CommandHandler("list", list_responses))
     application.add_handler(CommandHandler("admin", check_admin))
     application.add_handler(CommandHandler("stats", show_stats))

@@ -172,7 +172,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 disable_web_page_preview=True
             )
         return
-    
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) not in ADMINS:

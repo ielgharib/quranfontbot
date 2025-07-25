@@ -114,7 +114,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# --- معالجة الرسائل ---
+# --- معالجة الرسائل تعديل---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -132,40 +132,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_notification(context, update.effective_user)
     
     message = update.message
-    original_text = message.text if message.text else ""
-    responses = load_responses()
-
-    # تحضير قوائم الردود
-    found_responses = []
-    used_positions = set()  # لتجنب التداخل بين الكلمات
-
-    # البحث عن الكلمات المفتاحية بترتيب طولها (من الأطول إلى الأقصر)
-    sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
+    text = message.text if message.text else ""  # الحفاظ على الحروف الأصلية (بدون lower())
     
-    for keyword in sorted_keywords:
-        if keyword in original_text:
-            start_pos = original_text.find(keyword)
-            end_pos = start_pos + len(keyword)
-            
-            # التحقق من عدم تداخل هذه الكلمة مع كلمات سبق الرد عليها
-            overlap = False
-            for (used_start, used_end) in used_positions:
-                if not (end_pos <= used_start or start_pos >= used_end):
-                    overlap = True
-                    break
-            
-            if not overlap:
+    responses = load_responses()
+    
+    # جمع الردود بالترتيب مع منع التكرار
+    found_responses = []
+    used_keywords = set()  # لتجنب الرد على نفس الكلمة المفتاحية أكثر من مرة
+    
+    for keyword, response in responses.items():
+        if keyword in text and keyword not in used_keywords:
+            # البحث عن موضع الكلمة في النص للترتيب
+            keyword_position = text.find(keyword)
+            if keyword_position != -1:
                 found_responses.append({
-                    'position': start_pos,
-                    'response': responses[keyword],
+                    'position': keyword_position,
+                    'response': response,
                     'keyword': keyword
                 })
-                used_positions.add((start_pos, end_pos))
+                used_keywords.add(keyword)
     
-    # ترتيب الردود حسب ظهورها في النص الأصلي
+    # ترتيب الردود حسب ظهور الكلمات المفتاحية في النص الأصلي
     found_responses.sort(key=lambda x: x['position'])
     
-    # إرسال الرد الموحد
+    # بناء الرد النهائي
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         
@@ -181,8 +171,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 combined_response,
                 disable_web_page_preview=True
             )
-    return
-
+        return
+    
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) not in ADMINS:
@@ -253,7 +243,7 @@ async def remove_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not context.args:
         await update.message.reply_text(
-            "استخدم الأمر هكذا: .ازالة <الكلمة>",
+            "استخدم الأمر هكذا: /remove <الكلمة>",
             disable_web_page_preview=True
         )
         return
@@ -565,8 +555,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start_message.extend([
             "",
             "⚙️ الأوامر الإدارية:",
-            ".اضافة - إضافة رد جديد",
-            ".ازالة <الكلمة> - حذف رد",
+            "/add - إضافة رد جديد",
+            "/remove <الكلمة> - حذف رد",
             "/list - عرض كل الردود",
             "/stats - إحصائيات البوت",
             "/users - عرض المستخدمين",
@@ -590,9 +580,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TOKEN).build()
     
-    # محادثة إضافة الردود (تم تغيير الأمر من add إلى اضافة)
+    # محادثة إضافة الردود
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("اضافة", start_add_response)],
+        entry_points=[CommandHandler("add", start_add_response)],
         states={
             ADD_KEYWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_keyword)],
             ADD_RESPONSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_response_text)]
@@ -615,7 +605,7 @@ def main():
     application.add_handler(conv_handler)
     application.add_handler(broadcast_conv)
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("ازالة", remove_response))
+    application.add_handler(CommandHandler("remove", remove_response))
     application.add_handler(CommandHandler("list", list_responses))
     application.add_handler(CommandHandler("admin", check_admin))
     application.add_handler(CommandHandler("stats", show_stats))

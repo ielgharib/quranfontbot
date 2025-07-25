@@ -132,30 +132,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_notification(context, update.effective_user)
     
     message = update.message
-    text = message.text if message.text else ""  # الحفاظ على الحروف الأصلية (بدون lower())
-    
+    original_text = message.text if message.text else ""
     responses = load_responses()
-    
-    # جمع الردود بالترتيب مع منع التكرار
+
+    # تحضير قوائم الردود
     found_responses = []
-    used_keywords = set()  # لتجنب الرد على نفس الكلمة المفتاحية أكثر من مرة
+    used_positions = set()  # لتجنب التداخل بين الكلمات
+
+    # البحث عن الكلمات المفتاحية بترتيب طولها (من الأطول إلى الأقصر)
+    sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
     
-    for keyword, response in responses.items():
-        if keyword in text and keyword not in used_keywords:
-            # البحث عن موضع الكلمة في النص للترتيب
-            keyword_position = text.find(keyword)
-            if keyword_position != -1:
+    for keyword in sorted_keywords:
+        if keyword in original_text:
+            start_pos = original_text.find(keyword)
+            end_pos = start_pos + len(keyword)
+            
+            # التحقق من عدم تداخل هذه الكلمة مع كلمات سبق الرد عليها
+            overlap = False
+            for (used_start, used_end) in used_positions:
+                if not (end_pos <= used_start or start_pos >= used_end):
+                    overlap = True
+                    break
+            
+            if not overlap:
                 found_responses.append({
-                    'position': keyword_position,
-                    'response': response,
+                    'position': start_pos,
+                    'response': responses[keyword],
                     'keyword': keyword
                 })
-                used_keywords.add(keyword)
+                used_positions.add((start_pos, end_pos))
     
-    # ترتيب الردود حسب ظهور الكلمات المفتاحية في النص الأصلي
+    # ترتيب الردود حسب ظهورها في النص الأصلي
     found_responses.sort(key=lambda x: x['position'])
     
-    # بناء الرد النهائي
+    # إرسال الرد الموحد
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         
@@ -171,7 +181,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 combined_response,
                 disable_web_page_preview=True
             )
-        return
+    return
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) not in ADMINS:

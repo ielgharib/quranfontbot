@@ -159,6 +159,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
     
+    # تحقق إذا كانت الرسالة معدلة
+    is_edited = bool(update.edited_message)
+    
+    # إذا كانت رسالة معدلة، احذف الرد القديم إن وجد
+    if is_edited and 'last_response_id' in context.user_data:
+        try:
+            await context.bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=context.user_data['last_response_id']
+            )
+        except Exception as e:
+            print(f"Failed to delete old response: {e}")
+    
     original_text = message.text if message.text else ""
     
     # تحقق مما إذا بدأت الرسالة بـ . أو /
@@ -207,28 +220,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # إرسال الرد كـ reply على الرسالة المستهدفة
             try:
-                await context.bot.send_message(
+                sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
                     reply_to_message_id=target_message.message_id,
                     disable_web_page_preview=True
                 )
+                context.user_data['last_response_id'] = sent_message.message_id
             except Exception as e:
                 print(f"Failed to send reply: {e}")
                 # إذا فشل الرد كـ reply، نرسله كرسالة عادية
-                await context.bot.send_message(
+                sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
                     disable_web_page_preview=True
                 )
+                context.user_data['last_response_id'] = sent_message.message_id
         else:
             # إرسال الرد كـ reply على الرسالة المستهدفة
-            await context.bot.send_message(
+            sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
                 reply_to_message_id=target_message.message_id,
                 disable_web_page_preview=True
             )
+            context.user_data['last_response_id'] = sent_message.message_id
     return
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):

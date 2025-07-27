@@ -168,9 +168,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # تحضير قوائم الردود
     found_responses = []
-    used_positions = set()  # لتجنب التداخل بين الكلمات
+    used_positions = set()
 
-    # البحث عن الكلمات المفتاحية بترتيب طولها (من الأطول إلى الأقصر)
     sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
     
     for keyword in sorted_keywords:
@@ -178,7 +177,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             start_pos = original_text.find(keyword)
             end_pos = start_pos + len(keyword)
             
-            # التحقق من عدم تداخل هذه الكلمة مع كلمات سبق الرد عليها
             overlap = False
             for (used_start, used_end) in used_positions:
                 if not (end_pos <= used_start or start_pos >= used_end):
@@ -193,28 +191,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
                 used_positions.add((start_pos, end_pos))
     
-    # ترتيب الردود حسب ظهورها في النص الأصلي
     found_responses.sort(key=lambda x: x['position'])
     
-    # إرسال الرد الموحد
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         
-        # إذا بدأت الرسالة بـ . أو /، احذفها ثم أرسل الرد
         if should_delete:
             try:
                 await message.delete()
             except Exception as e:
                 print(f"Failed to delete message: {e}")
             
-            # إرسال الرد في نفس الدردشة (مجموعة أو خاص)
+            # إرسال الرد كـ reply على الرسالة المحذوفة (حتى لو تم حذفها)
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
+                reply_to_message_id=message.message_id,  # الأهم: الرد على الرسالة الأصلية
                 disable_web_page_preview=True
             )
         else:
-            # إذا لم تبدأ بـ . أو /، التصرف كالمعتاد
+            # إذا كانت الرسالة ردًا على رسالة أخرى
             if message.reply_to_message:
                 await context.bot.send_message(
                     chat_id=message.chat.id,
@@ -223,6 +219,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     disable_web_page_preview=True
                 )
             else:
+                # إذا كانت رسالة عادية، نرد عليها مباشرة
                 await message.reply_text(
                     combined_response,
                     disable_web_page_preview=True

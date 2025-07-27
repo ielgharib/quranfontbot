@@ -164,13 +164,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # تحقق مما إذا بدأت الرسالة بـ . أو /
     should_delete = original_text.startswith(('.', '/'))
     
-    # إذا بدأت الرسالة بـ . أو /، حاول حذفها
-    if should_delete:
-        try:
-            await message.delete()
-        except Exception as e:
-            print(f"Failed to delete message: {e}")
-    
     responses = load_responses()
 
     # تحضير قوائم الردود
@@ -207,20 +200,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         
-        if message.reply_to_message and not should_delete:
+        # إذا بدأت الرسالة بـ . أو /، احذفها ثم أرسل الرد
+        if should_delete:
+            try:
+                await message.delete()
+            except Exception as e:
+                print(f"Failed to delete message: {e}")
+            
+            # إرسال الرد في نفس الدردشة (مجموعة أو خاص)
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
-                reply_to_message_id=message.reply_to_message.message_id,
                 disable_web_page_preview=True
             )
         else:
-            # إرسال الرد مباشرة إلى المستخدم إذا تم حذف الرسالة
-            await context.bot.send_message(
-                chat_id=message.chat.id if not should_delete else user_id,
-                text=combined_response,
-                disable_web_page_preview=True
-            )
+            # إذا لم تبدأ بـ . أو /، التصرف كالمعتاد
+            if message.reply_to_message:
+                await context.bot.send_message(
+                    chat_id=message.chat.id,
+                    text=combined_response,
+                    reply_to_message_id=message.reply_to_message.message_id,
+                    disable_web_page_preview=True
+                )
+            else:
+                await message.reply_text(
+                    combined_response,
+                    disable_web_page_preview=True
+                )
     return
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):

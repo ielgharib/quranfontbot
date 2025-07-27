@@ -202,28 +202,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"Failed to delete message: {e}")
             
-            # إرسال الرد كـ reply على الرسالة المحذوفة (حتى لو تم حذفها)
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=combined_response,
-                reply_to_message_id=message.message_id,  # الأهم: الرد على الرسالة الأصلية
-                disable_web_page_preview=True
-            )
-        else:
-            # إذا كانت الرسالة ردًا على رسالة أخرى
-            if message.reply_to_message:
+            # إرسال الرد كـ reply على الرسالة الأصلية (حتى لو تم حذفها)
+            try:
                 await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
-                    reply_to_message_id=message.reply_to_message.message_id,
+                    reply_to_message_id=message.message_id,
                     disable_web_page_preview=True
                 )
-            else:
-                # إذا كانت رسالة عادية، نرد عليها مباشرة
-                await message.reply_text(
-                    combined_response,
+            except Exception as e:
+                print(f"Failed to send reply: {e}")
+                # إذا فشل الرد كـ reply، نرسله كرسالة عادية
+                await context.bot.send_message(
+                    chat_id=message.chat.id,
+                    text=combined_response,
                     disable_web_page_preview=True
                 )
+        else:
+            # دائماً نستخدم reply سواء كانت الرسالة ردًا على أخرى أم لا
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=combined_response,
+                reply_to_message_id=message.message_id,
+                disable_web_page_preview=True
+            )
     return
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -138,7 +138,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# --- 1معالجة الرسائل تعديل---
+# ---21معالجة الرسائل تعديل---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -155,11 +155,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_users(users_data)
         await send_admin_notification(context, update.effective_user)
     
-    message = update.message or update.edited_message  # التعديل هنا لدعم الرسائل المعدلة
+    message = update.message or update.edited_message
     if not message:
         return
     
     original_text = message.text if message.text else ""
+    
+    # تحقق مما إذا بدأت الرسالة بـ . أو /
+    should_delete = original_text.startswith(('.', '/'))
+    
+    # إذا بدأت الرسالة بـ . أو /، حاول حذفها
+    if should_delete:
+        try:
+            await message.delete()
+        except Exception as e:
+            print(f"Failed to delete message: {e}")
+    
     responses = load_responses()
 
     # تحضير قوائم الردود
@@ -196,7 +207,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         
-        if message.reply_to_message:
+        if message.reply_to_message and not should_delete:
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
@@ -204,8 +215,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 disable_web_page_preview=True
             )
         else:
-            await message.reply_text(
-                combined_response,
+            # إرسال الرد مباشرة إلى المستخدم إذا تم حذف الرسالة
+            await context.bot.send_message(
+                chat_id=message.chat.id if not should_delete else user_id,
+                text=combined_response,
                 disable_web_page_preview=True
             )
     return

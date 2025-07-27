@@ -196,18 +196,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         
+        # تحديد الرسالة المستهدفة للرد
+        target_message = message.reply_to_message if message.reply_to_message else message
+        
         if should_delete:
             try:
                 await message.delete()
             except Exception as e:
                 print(f"Failed to delete message: {e}")
             
-            # إرسال الرد كـ reply على الرسالة الأصلية (حتى لو تم حذفها)
+            # إرسال الرد كـ reply على الرسالة المستهدفة
             try:
                 await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
-                    reply_to_message_id=message.message_id,
+                    reply_to_message_id=target_message.message_id,
                     disable_web_page_preview=True
                 )
             except Exception as e:
@@ -219,11 +222,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     disable_web_page_preview=True
                 )
         else:
-            # دائماً نستخدم reply سواء كانت الرسالة ردًا على أخرى أم لا
+            # إرسال الرد كـ reply على الرسالة المستهدفة
             await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
-                reply_to_message_id=message.message_id,
+                reply_to_message_id=target_message.message_id,
                 disable_web_page_preview=True
             )
     return

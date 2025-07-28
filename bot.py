@@ -138,7 +138,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# --معالجة الرسائل ---
+# ---21معالجة الرسائل تعديل---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -174,8 +174,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     original_text = message.text if message.text else ""
     
-    # تحقق مما إذا بدأت الرسالة بـ . أو /
-    should_delete = original_text.startswith(('.', '/'))
+    # تحقق مما إذا بدأت الرسالة بـ . أو / (بعد إزالة أي مسافات)
+    should_delete = original_text.lstrip().startswith(('.', '/'))
     
     responses = load_responses()
 

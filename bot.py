@@ -173,23 +173,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Failed to delete old response: {e}")
     
-    # استخراج النص من الرسالة سواء كان نصًا مباشرًا أو تسمية توضيحية لوسائط
-    original_text = ""
-    if message.text:
-        original_text = message.text
-    elif message.caption:
-        original_text = message.caption
+    # النص قد يكون في message.text (رسالة نصية) أو message.caption (إذا كانت الرسالة تحتوي على وسائط)
+    original_text = message.text or message.caption or ""
     
     # تحقق مما إذا بدأت الرسالة بـ . أو / (فقط إذا كان هناك نص)
     should_delete = original_text.startswith(('.', '/')) if original_text else False
     
     responses = load_responses()
 
-    # تحضير قوائم الردود (فقط إذا كان هناك نص للبحث فيه)
+    # البحث عن الكلمات المفتاحية في النص (سواء كان في نص الرسالة أو التسمية التوضيحية للوسائط)
     found_responses = []
     used_positions = set()
 
-    if original_text:  # فقط ابحث عن كلمات مفتاحية إذا كان هناك نص
+    if original_text:  # فقط ابحث إذا كان هناك نص
         sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
         
         for keyword in sorted_keywords:
@@ -211,15 +207,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     })
                     used_positions.add((start_pos, end_pos))
     
-    # إذا كانت الرسالة تحتوي على وسائط (صور، فيديو، إلخ) بدون نص، نتحقق من وجود كلمة مفتاحية في التسمية التوضيحية
-    elif message.photo or message.video or message.document or message.audio or message.voice:
-        # يمكنك هنا إضافة كلمات مفتاحية خاصة بالوسائط إذا أردت
-        pass
-    
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         
-        # تحديد الرسالة المستهدفة للرد
+        # تحديد الرسالة المستهدفة للرد (الرسالة الأصلية إذا كان الرد على رسالة أخرى)
         target_message = message.reply_to_message if message.reply_to_message else message
         
         if should_delete:
@@ -228,7 +219,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"Failed to delete message: {e}")
             
-            # إرسال الرد كـ reply على الرسالة المستهدفة
+            # إرسال الرد كـ reply
             try:
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
@@ -247,7 +238,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 context.user_data['last_response_id'] = sent_message.message_id
         else:
-            # إرسال الرد كـ reply على الرسالة المستهدفة
+            # إرسال الرد كـ reply
             sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,

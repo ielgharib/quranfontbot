@@ -139,6 +139,7 @@ def update_stats(update: Update, command: str = None):
     save_stats(stats)
 
 # ---21معالجة الرسائل تعديل---
+# --- معالجة الرسائل (معدلة لدعم الوسائط المتعددة) ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -172,39 +173,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Failed to delete old response: {e}")
     
-    original_text = message.text if message.text else ""
+    # استخراج النص من الرسالة سواء كان نصًا مباشرًا أو تسمية توضيحية لوسائط
+    original_text = ""
+    if message.text:
+        original_text = message.text
+    elif message.caption:
+        original_text = message.caption
     
-    # تحقق مما إذا بدأت الرسالة بـ . أو /
-    should_delete = original_text.startswith(('.', '/'))
+    # تحقق مما إذا بدأت الرسالة بـ . أو / (فقط إذا كان هناك نص)
+    should_delete = original_text.startswith(('.', '/')) if original_text else False
     
     responses = load_responses()
 
-    # تحضير قوائم الردود
+    # تحضير قوائم الردود (فقط إذا كان هناك نص للبحث فيه)
     found_responses = []
     used_positions = set()
 
-    sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
+    if original_text:  # فقط ابحث عن كلمات مفتاحية إذا كان هناك نص
+        sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
+        
+        for keyword in sorted_keywords:
+            if keyword in original_text:
+                start_pos = original_text.find(keyword)
+                end_pos = start_pos + len(keyword)
+                
+                overlap = False
+                for (used_start, used_end) in used_positions:
+                    if not (end_pos <= used_start or start_pos >= used_end):
+                        overlap = True
+                        break
+                
+                if not overlap:
+                    found_responses.append({
+                        'position': start_pos,
+                        'response': responses[keyword],
+                        'keyword': keyword
+                    })
+                    used_positions.add((start_pos, end_pos))
     
-    for keyword in sorted_keywords:
-        if keyword in original_text:
-            start_pos = original_text.find(keyword)
-            end_pos = start_pos + len(keyword)
-            
-            overlap = False
-            for (used_start, used_end) in used_positions:
-                if not (end_pos <= used_start or start_pos >= used_end):
-                    overlap = True
-                    break
-            
-            if not overlap:
-                found_responses.append({
-                    'position': start_pos,
-                    'response': responses[keyword],
-                    'keyword': keyword
-                })
-                used_positions.add((start_pos, end_pos))
-    
-    found_responses.sort(key=lambda x: x['position'])
+    # إذا كانت الرسالة تحتوي على وسائط (صور، فيديو، إلخ) بدون نص، نتحقق من وجود كلمة مفتاحية في التسمية التوضيحية
+    elif message.photo or message.video or message.document or message.audio or message.voice:
+        # يمكنك هنا إضافة كلمات مفتاحية خاصة بالوسائط إذا أردت
+        pass
     
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])

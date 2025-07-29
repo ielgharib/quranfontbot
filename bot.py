@@ -138,7 +138,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# ---21معالجة الرسائل تعديل---
+# ---معالجة الرسائل تعديل1---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -162,8 +162,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # تحقق إذا كانت الرسالة معدلة
     is_edited = bool(update.edited_message)
     
-    # إذا كانت رسالة معدلة، احذف الرد القديم إن وجد
+    # إذا كانت رسالة معدلة، نتحقق مما إذا تم تعديل الكلمة المفتاحية
     if is_edited and 'last_response_id' in context.user_data:
+        original_text = context.user_data.get('original_text', '')
+        new_text = message.text if message.text else ""
+        
+        # تحقق إذا تغيرت الكلمة المفتاحية الأساسية
+        responses = load_responses()
+        keywords_in_original = [k for k in responses.keys() if k in original_text]
+        keywords_in_new = [k for k in responses.keys() if k in new_text]
+        
+        # إذا لم تتغير الكلمات المفتاحية الأساسية، لا تفعل شيئاً
+        if set(keywords_in_original) == set(keywords_in_new):
+            return
+        
+        # إذا تغيرت، احذف الرد القديم
         try:
             await context.bot.delete_message(
                 chat_id=message.chat.id,
@@ -173,8 +186,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"Failed to delete old response: {e}")
     
     original_text = message.text if message.text else ""
+    context.user_data['original_text'] = original_text  # حفظ النص الأصلي للمقارنة لاحقاً
     
-    # تحقق مما إذا بدأت الرسالة بـ . أو / (بعد إزالة أي مسافات)
+    # إزالة روابط المجموعات والأرقام المرتبطة بها من النص قبل المعالجة
+    import re
+    cleaned_text = re.sub(r'https?://t\.me/\w+/\d+', '', original_text)  # إزالة روابط مثل https://t.me/groupname/123
+    cleaned_text = re.sub(r'https?://telegram\.me/\w+/\d+', '', cleaned_text)  # إزالة روابط مثل https://telegram.me/groupname/123
+    cleaned_text = re.sub(r'\d+', '', cleaned_text)  # إزالة الأرقام المتبقية
+    
+    # إذا لم يبقَ شيء بعد التنظيف، تخطى الرد
+    if not cleaned_text.strip():
+        return
+    
     should_delete = original_text.lstrip().startswith(('.', '/'))
     
     responses = load_responses()
@@ -185,9 +208,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
     
+    # البحث عن الكلمات المفتاحية في النص المنظف
     for keyword in sorted_keywords:
-        if keyword in original_text:
-            start_pos = original_text.find(keyword)
+        if keyword in cleaned_text:
+            start_pos = cleaned_text.find(keyword)
             end_pos = start_pos + len(keyword)
             
             overlap = False

@@ -159,7 +159,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
     
-    # استخدام message_id كمفتاح فريد بدلاً من الاعتماد على user_data العام
     current_message_id = str(message.message_id)
     
     # تحقق إذا كانت الرسالة معدلة
@@ -175,32 +174,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keywords_in_original = [k for k in responses.keys() if k in original_text]
         keywords_in_new = [k for k in responses.keys() if k in new_text]
         
-        # إذا لم تتغير الكلمات المفتاحية الأساسية، لا تفعل شيئاً
-        if set(keywords_in_original) == set(keywords_in_new):
+        # إذا تغيرت الكلمات المفتاحية، احذف الرد القديم وأعد الإرسال
+        if set(keywords_in_original) != set(keywords_in_new):
+            try:
+                await context.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=context.chat_data[f'last_response_id_{current_message_id}']
+                )
+                del context.chat_data[f'last_response_id_{current_message_id}']
+            except Exception as e:
+                print(f"Failed to delete old response: {e}")
+        else:
+            # إذا لم تتغير الكلمات المفتاحية، لا تفعل شيئاً
             return
-        
-        # إذا تغيرت، احذف الرد القديم
-        try:
-            await context.bot.delete_message(
-                chat_id=message.chat.id,
-                message_id=context.chat_data[f'last_response_id_{current_message_id}']
-            )
-            del context.chat_data[f'last_response_id_{current_message_id}']
-        except Exception as e:
-            print(f"Failed to delete old response: {e}")
     
     original_text = message.text if message.text else ""
-    context.chat_data[f'original_text_{current_message_id}'] = original_text  # حفظ النص الأصلي للمقارنة لاحقاً
-    
-    # إزالة روابط المجموعات والأرقام المرتبطة بها من النص قبل المعالجة
-    import re
-    cleaned_text = re.sub(r'https?://t\.me/\w+/\d+', '', original_text)  # إزالة روابط مثل https://t.me/groupname/123
-    cleaned_text = re.sub(r'https?://telegram\.me/\w+/\d+', '', cleaned_text)  # إزالة روابط مثل https://telegram.me/groupname/123
-    cleaned_text = re.sub(r'\d+', '', cleaned_text)  # إزالة الأرقام المتبقية
-    
-    # إذا لم يبقَ شيء بعد التنظيف، تخطى الرد
-    if not cleaned_text.strip():
-        return
+    context.chat_data[f'original_text_{current_message_id}'] = original_text
     
     should_delete = original_text.lstrip().startswith(('.', '/'))
     
@@ -212,10 +201,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
     
-    # البحث عن الكلمات المفتاحية في النص المنظف
     for keyword in sorted_keywords:
-        if keyword in cleaned_text:
-            start_pos = cleaned_text.find(keyword)
+        if keyword in original_text:
+            start_pos = original_text.find(keyword)
             end_pos = start_pos + len(keyword)
             
             overlap = False
@@ -257,7 +245,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
             except Exception as e:
                 print(f"Failed to send reply: {e}")
-                # إذا فشل الرد كـ reply، نرسله كرسالة عادية
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
@@ -265,7 +252,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
         else:
-            # إرسال الرد كـ reply على الرسالة المستهدفة
             sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
@@ -283,7 +269,6 @@ def cleanup_old_messages(context: ContextTypes.DEFAULT_TYPE):
     if not hasattr(context, 'chat_data'):
         return
     
-    # نحتفظ ببيانات آخر 20 رسالة فقط
     message_keys = [k for k in context.chat_data.keys() if k.startswith('last_response_id_')]
     if len(message_keys) > 20:
         oldest_keys = sorted(message_keys)[:len(message_keys)-20]

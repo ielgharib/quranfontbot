@@ -159,12 +159,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
     
+    # استخدام message_id كمفتاح فريد بدلاً من الاعتماد على user_data العام
+    current_message_id = str(message.message_id)
+    
     # تحقق إذا كانت الرسالة معدلة
     is_edited = bool(update.edited_message)
     
-    # إذا كانت رسالة معدلة، نتحقق مما إذا تم تعديل الكلمة المفتاحية
-    if is_edited and 'last_response_id' in context.user_data:
-        original_text = context.user_data.get('original_text', '')
+    # إذا كانت رسالة معدلة، نتحقق مما إذا كانت الرسالة الأصلية لها رد
+    if is_edited and f'last_response_id_{current_message_id}' in context.chat_data:
+        original_text = context.chat_data.get(f'original_text_{current_message_id}', '')
         new_text = message.text if message.text else ""
         
         # تحقق إذا تغيرت الكلمة المفتاحية الأساسية
@@ -180,13 +183,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.delete_message(
                 chat_id=message.chat.id,
-                message_id=context.user_data['last_response_id']
+                message_id=context.chat_data[f'last_response_id_{current_message_id}']
             )
+            del context.chat_data[f'last_response_id_{current_message_id}']
         except Exception as e:
             print(f"Failed to delete old response: {e}")
     
     original_text = message.text if message.text else ""
-    context.user_data['original_text'] = original_text  # حفظ النص الأصلي للمقارنة لاحقاً
+    context.chat_data[f'original_text_{current_message_id}'] = original_text  # حفظ النص الأصلي للمقارنة لاحقاً
     
     # إزالة روابط المجموعات والأرقام المرتبطة بها من النص قبل المعالجة
     import re
@@ -250,7 +254,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_to_message_id=target_message.message_id,
                     disable_web_page_preview=True
                 )
-                context.user_data['last_response_id'] = sent_message.message_id
+                context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
             except Exception as e:
                 print(f"Failed to send reply: {e}")
                 # إذا فشل الرد كـ reply، نرسله كرسالة عادية
@@ -259,7 +263,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=combined_response,
                     disable_web_page_preview=True
                 )
-                context.user_data['last_response_id'] = sent_message.message_id
+                context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
         else:
             # إرسال الرد كـ reply على الرسالة المستهدفة
             sent_message = await context.bot.send_message(
@@ -268,8 +272,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_to_message_id=target_message.message_id,
                 disable_web_page_preview=True
             )
-            context.user_data['last_response_id'] = sent_message.message_id
+            context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
+    
+    # تنظيف البيانات القديمة
+    cleanup_old_messages(context)
     return
+
+def cleanup_old_messages(context: ContextTypes.DEFAULT_TYPE):
+    """تنظيف بيانات الرسائل القديمة لتجنب تراكم البيانات"""
+    if not hasattr(context, 'chat_data'):
+        return
+    
+    # نحتفظ ببيانات آخر 20 رسالة فقط
+    message_keys = [k for k in context.chat_data.keys() if k.startswith('last_response_id_')]
+    if len(message_keys) > 20:
+        oldest_keys = sorted(message_keys)[:len(message_keys)-20]
+        for key in oldest_keys:
+            message_id = key.replace('last_response_id_', '')
+            del context.chat_data[key]
+            if f'original_text_{message_id}' in context.chat_data:
+                del context.chat_data[f'original_text_{message_id}']
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) not in ADMINS:

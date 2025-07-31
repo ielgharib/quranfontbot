@@ -272,7 +272,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # المعالجة العادية للرسائل في المجموعات أو من المديرين
-   responses = load_responses()
+    responses = load_responses()
     found_responses = []
     used_positions = set()
     current_keywords = set()

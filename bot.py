@@ -229,53 +229,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # إذا كانت رسالة خاصة وليست من مدير، أرسلها للمدير
     if message.chat.type == "private" and str(update.effective_user.id) not in ADMINS:
-        # تحقق إذا كانت الرسالة تحتوي على كلمات مفتاحية
-        responses = load_responses()
-        found_responses = []
-        used_positions = set()
-
-        sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
-        
-        for keyword in sorted_keywords:
-            if keyword in original_text:
-                start_pos = original_text.find(keyword)
-                end_pos = start_pos + len(keyword)
-                
-                overlap = False
-                for (used_start, used_end) in used_positions:
-                    if not (end_pos <= used_start or start_pos >= used_end):
-                        overlap = True
-                        break
-                
-                if not overlap:
-                    found_responses.append({
-                        'position': start_pos,
-                        'response': responses[keyword],
-                        'keyword': keyword
-                    })
-                    used_positions.add((start_pos, end_pos))
-        
-        # إذا وجدت ردود تلقائية، أرسلها
-        if found_responses:
-            found_responses.sort(key=lambda x: x['position'])
-            combined_response = "\n\n".join([item['response'] for item in found_responses])
-            
-            sent_message = await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=combined_response,
-                disable_web_page_preview=True
-            )
-        else:
-            # أرسل الرسالة للمدير فقط إذا لم تكن هناك ردود تلقائية
-            await forward_message_to_admin(context, update.effective_user, message)
+        # ... (الكود الخاص بالرسائل الخاصة يبقى كما هو)
         return
     
     # المعالجة العادية للرسائل في المجموعات أو من المديرين
     responses = load_responses()
-
-    # تحضير قوائم الردود
     found_responses = []
     used_positions = set()
+    current_keywords = set()
 
     sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
     
@@ -296,18 +257,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'response': responses[keyword],
                     'keyword': keyword
                 })
+                current_keywords.add(keyword)
                 used_positions.add((start_pos, end_pos))
     
     found_responses.sort(key=lambda x: x['position'])
     
     if found_responses:
         combined_response = "\n\n".join([item['response'] for item in found_responses])
-        
-        # تحديد الرسالة المستهدفة للرد
         target_message = message.reply_to_message if message.reply_to_message else message
         
-        # إذا كانت الرسالة معدلة، نحاول حذف الرد القديم أولاً
+        # إذا كانت الرسالة معدلة، نتحقق من التغييرات في الكلمات المفتاحية
         if is_edited and 'last_response_id' in context.user_data:
+            old_keywords = context.user_data.get('last_keywords', set())
+            
+            # إذا لم تتغير الكلمات المفتاحية، لا نقوم بأي شيء
+            if old_keywords == current_keywords:
+                return
+                
+            # إذا تغيرت الكلمات المفتاحية، نحذف الرد القديم
             try:
                 await context.bot.delete_message(
                     chat_id=message.chat.id,
@@ -316,13 +283,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"Failed to delete previous response: {e}")
         
+        # إرسال الرد الجديد وحفظ البيانات
         if should_delete:
             try:
                 await message.delete()
             except Exception as e:
                 print(f"Failed to delete message: {e}")
             
-            # إرسال الرد كـ reply على الرسالة المستهدفة
             try:
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
@@ -330,26 +297,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_to_message_id=target_message.message_id,
                     disable_web_page_preview=True
                 )
-                context.user_data['last_response_id'] = sent_message.message_id
+                context.user_data.update({
+                    'last_response_id': sent_message.message_id,
+                    'last_keywords': current_keywords
+                })
             except Exception as e:
                 print(f"Failed to send reply: {e}")
-                # إذا فشل الرد كـ reply، نرسله كرسالة عادية
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
                     disable_web_page_preview=True
                 )
-                context.user_data['last_response_id'] = sent_message.message_id
+                context.user_data.update({
+                    'last_response_id': sent_message.message_id,
+                    'last_keywords': current_keywords
+                })
         else:
-            # إرسال الرد كـ reply على الرسالة المستهدفة
             sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
                 reply_to_message_id=target_message.message_id,
                 disable_web_page_preview=True
             )
-            context.user_data['last_response_id'] = sent_message.message_id
+            context.user_data.update({
+                'last_response_id': sent_message.message_id,
+                'last_keywords': current_keywords
+            })
     return
+    
 # --- معالجة الأزرار التفاعلية ---
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

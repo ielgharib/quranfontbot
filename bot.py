@@ -265,7 +265,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=combined_response,
                 disable_web_page_preview=True
             )
-            # لا نقوم بحفظ معرف الرسالة في context.user_data
         else:
             # أرسل الرسالة للمدير فقط إذا لم تكن هناك ردود تلقائية
             await forward_message_to_admin(context, update.effective_user, message)
@@ -351,75 +350,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             context.user_data['last_response_id'] = sent_message.message_id
     return
-    
-    # المعالجة العادية للرسائل في المجموعات أو من المديرين
-    responses = load_responses()
-
-    # تحضير قوائم الردود
-    found_responses = []
-    used_positions = set()
-
-    sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
-    
-    for keyword in sorted_keywords:
-        if keyword in original_text:
-            start_pos = original_text.find(keyword)
-            end_pos = start_pos + len(keyword)
-            
-            overlap = False
-            for (used_start, used_end) in used_positions:
-                if not (end_pos <= used_start or start_pos >= used_end):
-                    overlap = True
-                    break
-            
-            if not overlap:
-                found_responses.append({
-                    'position': start_pos,
-                    'response': responses[keyword],
-                    'keyword': keyword
-                })
-                used_positions.add((start_pos, end_pos))
-    
-    found_responses.sort(key=lambda x: x['position'])
-    
-    if found_responses:
-        combined_response = "\n\n".join([item['response'] for item in found_responses])
-        
-        # تحديد الرسالة المستهدفة للرد
-        target_message = message.reply_to_message if message.reply_to_message else message
-        
-        if should_delete:
-            try:
-                await message.delete()
-            except Exception as e:
-                print(f"Failed to delete message: {e}")
-            
-            # إرسال الرد كـ reply على الرسالة المستهدفة
-            try:
-                sent_message = await context.bot.send_message(
-                    chat_id=message.chat.id,
-                    text=combined_response,
-                    reply_to_message_id=target_message.message_id,
-                    disable_web_page_preview=True
-                )
-            except Exception as e:
-                print(f"Failed to send reply: {e}")
-                # إذا فشل الرد كـ reply، نرسله كرسالة عادية
-                sent_message = await context.bot.send_message(
-                    chat_id=message.chat.id,
-                    text=combined_response,
-                    disable_web_page_preview=True
-                )
-        else:
-            # إرسال الرد كـ reply على الرسالة المستهدفة
-            sent_message = await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=combined_response,
-                reply_to_message_id=target_message.message_id,
-                disable_web_page_preview=True
-            )
-    return
-
 # --- معالجة الأزرار التفاعلية ---
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

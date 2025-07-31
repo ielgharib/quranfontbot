@@ -1,11 +1,12 @@
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     filters,
     ContextTypes,
-    ConversationHandler
+    ConversationHandler,
+    CallbackQueryHandler
 )
 import json
 import os
@@ -20,9 +21,11 @@ BROADCAST_CONFIRM = {}  # لتخزين بيانات الإذاعة قبل الت
 RESPONSES_FILE = "responses.json"
 STATS_FILE = "stats.json"
 USERS_FILE = "users.json"  # ملف جديد لتخزين معلومات المستخدمين
+MESSAGES_FILE = "user_messages.json"  # ملف جديد لتخزين رسائل المستخدمين
 
 # --- حالات المحادثة ---
 ADD_KEYWORD, ADD_RESPONSE = range(2)
+REPLY_TO_USER = range(1)
 
 # --- تحميل البيانات ---
 def load_data(filename, default_data):
@@ -46,7 +49,14 @@ def save_data(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
 
-# --- 1إدارة الردود ---
+# --- إدارة رسائل المستخدمين ---
+def load_user_messages():
+    return load_data(MESSAGES_FILE, {"messages": {}})
+
+def save_user_messages(messages_data):
+    save_data(MESSAGES_FILE, messages_data)
+
+# --- إدارة الردود ---
 async def export_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update, "export")
     
@@ -71,6 +81,7 @@ async def export_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ حدث خطأ أثناء تصدير الملف: {str(e)}",
             disable_web_page_preview=True
         )
+
 def load_responses():
     return load_data(RESPONSES_FILE, {})
 
@@ -115,6 +126,55 @@ async def send_admin_notification(context, user):
     except Exception as e:
         print(f"Error sending admin notification: {e}")
 
+# --- إرسال رسالة المستخدم للمدير ---
+async def forward_message_to_admin(context, user, message):
+    try:
+        # حفظ الرسالة في قاعدة البيانات
+        messages_data = load_user_messages()
+        message_id = str(len(messages_data["messages"]) + 1)
+        
+        messages_data["messages"][message_id] = {
+            "user_id": str(user.id),
+            "user_name": user.full_name,
+            "username": user.username,
+            "message": message.text or message.caption or "[رسالة غير نصية]",
+            "timestamp": str(datetime.now()),
+            "replied": False,
+            "reply_text": None,
+            "reply_timestamp": None
+        }
+        
+        save_user_messages(messages_data)
+        
+        # إرسال الرسالة للمدير مع أزرار الرد
+        keyboard = [
+            [InlineKeyboardButton("💬 رد على هذه الرسالة", callback_data=f"reply_{message_id}")],
+            [InlineKeyboardButton("📋 عرض جميع الرسائل", callback_data="view_all_messages")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        admin_message = f"📨 رسالة جديدة من مستخدم:\n\n"
+        admin_message += f"👤 الاسم: {user.full_name}\n"
+        admin_message += f"🆔 ID: {user.id}\n"
+        if user.username:
+            admin_message += f"🔗 اليوزر: @{user.username}\n"
+        admin_message += f"⏰ الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        admin_message += f"📝 الرسالة: {message.text or message.caption or '[رسالة غير نصية]'}\n"
+        admin_message += f"🔢 رقم الرسالة: {message_id}"
+        
+        await context.bot.send_message(
+            chat_id=ADMINS[0],
+            text=admin_message,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+        
+        return message_id
+        
+    except Exception as e:
+        print(f"Error forwarding message to admin: {e}")
+        return None
+
 # --- تحديث الإحصائيات ---
 def update_stats(update: Update, command: str = None):
     stats = load_stats()
@@ -138,7 +198,7 @@ def update_stats(update: Update, command: str = None):
     
     save_stats(stats)
 
-# ---معالجة الرسائل تعديل1---
+# --- معالجة الرسائل المحدثة ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update)
     
@@ -159,40 +219,69 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
     
-    current_message_id = str(message.message_id)
-    
     # تحقق إذا كانت الرسالة معدلة
     is_edited = bool(update.edited_message)
     
-    # إذا كانت رسالة معدلة، نتحقق مما إذا كانت الرسالة الأصلية لها رد
-    if is_edited and f'last_response_id_{current_message_id}' in context.chat_data:
-        original_text = context.chat_data.get(f'original_text_{current_message_id}', '')
-        new_text = message.text if message.text else ""
-        
-        # تحقق إذا تغيرت الكلمة المفتاحية الأساسية
-        responses = load_responses()
-        keywords_in_original = [k for k in responses.keys() if k in original_text]
-        keywords_in_new = [k for k in responses.keys() if k in new_text]
-        
-        # إذا تغيرت الكلمات المفتاحية، احذف الرد القديم وأعد الإرسال
-        if set(keywords_in_original) != set(keywords_in_new):
-            try:
-                await context.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=context.chat_data[f'last_response_id_{current_message_id}']
-                )
-                del context.chat_data[f'last_response_id_{current_message_id}']
-            except Exception as e:
-                print(f"Failed to delete old response: {e}")
-        else:
-            # إذا لم تتغير الكلمات المفتاحية، لا تفعل شيئاً
-            return
+    # إذا كانت رسالة معدلة، احذف الرد القديم إن وجد
+    if is_edited and 'last_response_id' in context.user_data:
+        try:
+            await context.bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=context.user_data['last_response_id']
+            )
+        except Exception as e:
+            print(f"Failed to delete old response: {e}")
     
     original_text = message.text if message.text else ""
-    context.chat_data[f'original_text_{current_message_id}'] = original_text
     
+    # تحقق مما إذا بدأت الرسالة بـ . أو / (بعد إزالة أي مسافات)
     should_delete = original_text.lstrip().startswith(('.', '/'))
     
+    # إذا كانت رسالة خاصة وليست من مدير، أرسلها للمدير
+    if message.chat.type == "private" and str(update.effective_user.id) not in ADMINS:
+        # تحقق إذا كانت الرسالة تحتوي على كلمات مفتاحية
+        responses = load_responses()
+        found_responses = []
+        used_positions = set()
+
+        sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
+        
+        for keyword in sorted_keywords:
+            if keyword in original_text:
+                start_pos = original_text.find(keyword)
+                end_pos = start_pos + len(keyword)
+                
+                overlap = False
+                for (used_start, used_end) in used_positions:
+                    if not (end_pos <= used_start or start_pos >= used_end):
+                        overlap = True
+                        break
+                
+                if not overlap:
+                    found_responses.append({
+                        'position': start_pos,
+                        'response': responses[keyword],
+                        'keyword': keyword
+                    })
+                    used_positions.add((start_pos, end_pos))
+        
+        # إذا وجدت ردود تلقائية، أرسلها
+        if found_responses:
+            found_responses.sort(key=lambda x: x['position'])
+            combined_response = "\n\n".join([item['response'] for item in found_responses])
+            
+            sent_message = await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=combined_response,
+                disable_web_page_preview=True
+            )
+            context.user_data['last_response_id'] = sent_message.message_id
+        
+        # أرسل الرسالة للمدير أيضاً
+        await forward_message_to_admin(context, update.effective_user, message)
+        return
+    
+    # المعالجة العادية للرسائل في المجموعات أو من المديرين
     responses = load_responses()
 
     # تحضير قوائم الردود
@@ -242,41 +331,187 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_to_message_id=target_message.message_id,
                     disable_web_page_preview=True
                 )
-                context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
+                context.user_data['last_response_id'] = sent_message.message_id
             except Exception as e:
                 print(f"Failed to send reply: {e}")
+                # إذا فشل الرد كـ reply، نرسله كرسالة عادية
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
                     disable_web_page_preview=True
                 )
-                context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
+                context.user_data['last_response_id'] = sent_message.message_id
         else:
+            # إرسال الرد كـ reply على الرسالة المستهدفة
             sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
                 reply_to_message_id=target_message.message_id,
                 disable_web_page_preview=True
             )
-            context.chat_data[f'last_response_id_{current_message_id}'] = sent_message.message_id
-    
-    # تنظيف البيانات القديمة
-    cleanup_old_messages(context)
+            context.user_data['last_response_id'] = sent_message.message_id
     return
 
-def cleanup_old_messages(context: ContextTypes.DEFAULT_TYPE):
-    """تنظيف بيانات الرسائل القديمة لتجنب تراكم البيانات"""
-    if not hasattr(context, 'chat_data'):
+# --- معالجة الأزرار التفاعلية ---
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if str(query.from_user.id) not in ADMINS:
+        await query.edit_message_text("⚠️ هذا الأمر متاح للمديرين فقط!")
         return
     
-    message_keys = [k for k in context.chat_data.keys() if k.startswith('last_response_id_')]
-    if len(message_keys) > 20:
-        oldest_keys = sorted(message_keys)[:len(message_keys)-20]
-        for key in oldest_keys:
-            message_id = key.replace('last_response_id_', '')
-            del context.chat_data[key]
-            if f'original_text_{message_id}' in context.chat_data:
-                del context.chat_data[f'original_text_{message_id}']
+    if query.data.startswith("reply_"):
+        message_id = query.data.split("_")[1]
+        context.user_data["reply_message_id"] = message_id
+        
+        messages_data = load_user_messages()
+        if message_id in messages_data["messages"]:
+            msg_data = messages_data["messages"][message_id]
+            await query.edit_message_text(
+                f"💬 الرد على الرسالة رقم {message_id}\n\n"
+                f"👤 المستخدم: {msg_data['user_name']}\n"
+                f"📝 الرسالة: {msg_data['message']}\n\n"
+                f"الرجاء كتابة ردك الآن:"
+            )
+            return REPLY_TO_USER
+        else:
+            await query.edit_message_text("❌ لم يتم العثور على الرسالة!")
+    
+    elif query.data == "view_all_messages":
+        messages_data = load_user_messages()
+        if not messages_data["messages"]:
+            await query.edit_message_text("📭 لا توجد رسائل بعد.")
+            return
+        
+        message_list = "📨 جميع رسائل المستخدمين:\n\n"
+        for msg_id, msg_data in messages_data["messages"].items():
+            status = "✅ تم الرد" if msg_data["replied"] else "⏳ في الانتظار"
+            message_list += f"🔢 {msg_id}: {msg_data['user_name']} - {status}\n"
+            message_list += f"   📝 {msg_data['message'][:50]}...\n\n"
+        
+        if len(message_list) > 4000:
+            parts = [message_list[i:i+4000] for i in range(0, len(message_list), 4000)]
+            for i, part in enumerate(parts):
+                if i == 0:
+                    await query.edit_message_text(part)
+                else:
+                    await context.bot.send_message(
+                        chat_id=query.message.chat.id,
+                        text=part,
+                        disable_web_page_preview=True
+                    )
+        else:
+            await query.edit_message_text(message_list)
+
+# --- الرد على رسالة مستخدم ---
+async def reply_to_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text("⚠️ هذا الأمر متاح للمديرين فقط!")
+        return ConversationHandler.END
+    
+    reply_text = update.message.text
+    message_id = context.user_data.get("reply_message_id")
+    
+    if not message_id:
+        await update.message.reply_text("❌ حدث خطأ، لم يتم العثور على رقم الرسالة.")
+        return ConversationHandler.END
+    
+    messages_data = load_user_messages()
+    if message_id not in messages_data["messages"]:
+        await update.message.reply_text("❌ لم يتم العثور على الرسالة!")
+        return ConversationHandler.END
+    
+    msg_data = messages_data["messages"][message_id]
+    user_id = msg_data["user_id"]
+    
+    try:
+        # إرسال الرد للمستخدم
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"💬 رد من الإدارة:\n\n{reply_text}",
+            disable_web_page_preview=True
+        )
+        
+        # تحديث حالة الرسالة
+        messages_data["messages"][message_id]["replied"] = True
+        messages_data["messages"][message_id]["reply_text"] = reply_text
+        messages_data["messages"][message_id]["reply_timestamp"] = str(datetime.now())
+        save_user_messages(messages_data)
+        
+        await update.message.reply_text(
+            f"✅ تم إرسال الرد بنجاح للمستخدم {msg_data['user_name']}!"
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ فشل في إرسال الرد: {str(e)}"
+        )
+    
+    # تنظيف البيانات المؤقتة
+    if "reply_message_id" in context.user_data:
+        del context.user_data["reply_message_id"]
+    
+    return ConversationHandler.END
+
+# --- عرض رسائل المستخدمين ---
+async def view_user_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_stats(update, "messages")
+    
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text(
+            "⚠️ هذا الأمر متاح للمديرين فقط!",
+            disable_web_page_preview=True
+        )
+        return
+    
+    messages_data = load_user_messages()
+    
+    if not messages_data["messages"]:
+        await update.message.reply_text(
+            "📭 لا توجد رسائل من المستخدمين بعد.",
+            disable_web_page_preview=True
+        )
+        return
+    
+    # عرض آخر 10 رسائل
+    sorted_messages = sorted(
+        messages_data["messages"].items(),
+        key=lambda x: x[1]["timestamp"],
+        reverse=True
+    )[:10]
+    
+    message_list = ["📨 آخر 10 رسائل من المستخدمين:\n"]
+    
+    for msg_id, msg_data in sorted_messages:
+        status = "✅ تم الرد" if msg_data["replied"] else "⏳ في الانتظار"
+        message_list.append(f"\n🔢 رقم الرسالة: {msg_id}")
+        message_list.append(f"👤 المستخدم: {msg_data['user_name']}")
+        message_list.append(f"📝 الرسالة: {msg_data['message'][:100]}...")
+        message_list.append(f"⏰ الوقت: {msg_data['timestamp'][:16]}")
+        message_list.append(f"📊 الحالة: {status}")
+        if msg_data["replied"]:
+            message_list.append(f"💬 الرد: {msg_data['reply_text'][:50]}...")
+    
+    message_list.append(f"\n📊 إجمالي الرسائل: {len(messages_data['messages'])}")
+    message_list.append(f"⏳ في الانتظار: {sum(1 for msg in messages_data['messages'].values() if not msg['replied'])}")
+    message_list.append(f"✅ تم الرد عليها: {sum(1 for msg in messages_data['messages'].values() if msg['replied'])}")
+    
+    full_message = "\n".join(message_list)
+    
+    if len(full_message) > 4000:
+        parts = [full_message[i:i+4000] for i in range(0, len(full_message), 4000)]
+        for part in parts:
+            await update.message.reply_text(
+                part,
+                disable_web_page_preview=True
+            )
+    else:
+        await update.message.reply_text(
+            full_message,
+            disable_web_page_preview=True
+        )
+
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) not in ADMINS:
@@ -327,9 +562,11 @@ async def add_response_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "temp_keyword" in context.user_data:
         del context.user_data["temp_keyword"]
+    if "reply_message_id" in context.user_data:
+        del context.user_data["reply_message_id"]
     
     await update.message.reply_text(
-        "❌ تم إلغاء عملية الإضافة.",
+        "❌ تم إلغاء العملية.",
         disable_web_page_preview=True
     )
     return ConversationHandler.END
@@ -459,12 +696,15 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = load_stats()
     users_data = load_users()
     responses = load_responses()
+    messages_data = load_user_messages()
     
     message = [
         "📊 إحصائيات البوت:",
         f"👤 عدد المستخدمين الفريدين: {len(users_data['users'])}",
         f"👥 عدد المجموعات/القنوات: {len(stats['total_groups'])}",
         f"📝 عدد الردود المسجلة: {len(responses)}",
+        f"📨 إجمالي رسائل المستخدمين: {len(messages_data['messages'])}",
+        f"⏳ رسائل في الانتظار: {sum(1 for msg in messages_data['messages'].values() if not msg['replied'])}",
         "\n📌 الأوامر الأكثر استخدامًا:"
     ]
     
@@ -651,7 +891,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "",
         "🎯 كيفية الاستخدام:",
         "- عندما يتم ذكر أي كلمة مسجلة، سأقوم بالرد تلقائياً",
-        "- إذا تم الرد على رسالة تحتوي كلمة مسجلة، سأرد على الرسالة الأصلية"
+        "- إذا تم الرد على رسالة تحتوي كلمة مسجلة، سأرد على الرسالة الأصلية",
+        "- يمكنك إرسال رسائل خاصة لي وسيتم توجيهها للإدارة"
     ]
     
     # إظهار الأوامر فقط للمدير
@@ -664,6 +905,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/list - عرض كل الردود",
             "/stats - إحصائيات البوت",
             "/users - عرض المستخدمين",
+            "/messages - عرض رسائل المستخدمين",
             "/broadcast - إرسال إذاعة للمستخدمين"
         ])
     
@@ -680,7 +922,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disable_web_page_preview=True
     )
 
-# --- 1الدالة الرئيسية ---
+# --- الدالة الرئيسية ---
 def main():
     application = Application.builder().token(TOKEN).build()
     
@@ -694,8 +936,17 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_add_response)]
     )
     
+    # محادثة الرد على المستخدمين
+    reply_conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button_callback, pattern="^reply_")],
+        states={
+            REPLY_TO_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, reply_to_user_message)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_add_response)]
+    )
+    
     # محادثة الإذاعة
-    broadcast_conv = ConversationHandler(
+    broadcast_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("broadcast", start_broadcast)],
         states={
             "BROADCAST_TYPE": [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_broadcast_type)],
@@ -705,28 +956,24 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_broadcast)]
     )
     
-    # إضافة handlers
+    # تسجيل المعالجات
     application.add_handler(conv_handler)
-    application.add_handler(broadcast_conv)
+    application.add_handler(reply_conv_handler)
+    application.add_handler(broadcast_conv_handler)
+    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("remove", remove_response))
     application.add_handler(CommandHandler("list", list_responses))
-    application.add_handler(CommandHandler("admin", check_admin))
     application.add_handler(CommandHandler("stats", show_stats))
     application.add_handler(CommandHandler("users", show_users))
-    application.add_handler(CommandHandler("save", export_responses))  # أضف هذا السطر
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(MessageHandler(filters.TEXT & filters.UpdateType.EDITED_MESSAGE, handle_message))  # أضف هذا السطر لدعم الرسائل المعدلة
+    application.add_handler(CommandHandler("messages", view_user_messages))
+    application.add_handler(CommandHandler("admin", check_admin))
+    application.add_handler(CommandHandler("export", export_responses))
+    application.add_handler(MessageHandler(filters.ALL, handle_message))
     
+    print("🤖 البوت يعمل الآن...")
     application.run_polling()
 
 if __name__ == "__main__":
-    # إنشاء ملفات التخزين إذا لم تكن موجودة
-    if not os.path.exists(RESPONSES_FILE):
-        save_responses({})
-    if not os.path.exists(STATS_FILE):
-        save_stats(load_stats())
-    if not os.path.exists(USERS_FILE):
-        save_users({"users": {}})
-    
     main()
+

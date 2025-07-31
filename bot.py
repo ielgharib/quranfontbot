@@ -222,16 +222,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # تحقق إذا كانت الرسالة معدلة
     is_edited = bool(update.edited_message)
     
-    # إذا كانت رسالة معدلة، احذف الرد القديم إن وجد
-    if is_edited and 'last_response_id' in context.user_data:
-        try:
-            await context.bot.delete_message(
-                chat_id=message.chat.id,
-                message_id=context.user_data['last_response_id']
-            )
-        except Exception as e:
-            print(f"Failed to delete old response: {e}")
-    
     original_text = message.text if message.text else ""
     
     # تحقق مما إذا بدأت الرسالة بـ . أو / (بعد إزالة أي مسافات)
@@ -275,10 +265,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=combined_response,
                 disable_web_page_preview=True
             )
-            context.user_data['last_response_id'] = sent_message.message_id
-        
-        # أرسل الرسالة للمدير أيضاً
-        await forward_message_to_admin(context, update.effective_user, message)
+            # لا نقوم بحفظ معرف الرسالة في context.user_data
+        else:
+            # أرسل الرسالة للمدير فقط إذا لم تكن هناك ردود تلقائية
+            await forward_message_to_admin(context, update.effective_user, message)
         return
     
     # المعالجة العادية للرسائل في المجموعات أو من المديرين
@@ -331,7 +321,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_to_message_id=target_message.message_id,
                     disable_web_page_preview=True
                 )
-                context.user_data['last_response_id'] = sent_message.message_id
             except Exception as e:
                 print(f"Failed to send reply: {e}")
                 # إذا فشل الرد كـ reply، نرسله كرسالة عادية
@@ -340,7 +329,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=combined_response,
                     disable_web_page_preview=True
                 )
-                context.user_data['last_response_id'] = sent_message.message_id
         else:
             # إرسال الرد كـ reply على الرسالة المستهدفة
             sent_message = await context.bot.send_message(
@@ -349,7 +337,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_to_message_id=target_message.message_id,
                 disable_web_page_preview=True
             )
-            context.user_data['last_response_id'] = sent_message.message_id
     return
 
 # --- معالجة الأزرار التفاعلية ---
@@ -976,4 +963,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -227,6 +227,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # تحقق مما إذا بدأت الرسالة بـ . أو / (بعد إزالة أي مسافات)
     should_delete = original_text.lstrip().startswith(('.', '/'))
     
+    # إضافة تفاعل 🤔 لرسائل المستخدمين العاديين في المجموعات
+    if (update.effective_chat.type in ["group", "supergroup"] and 
+        str(update.effective_user.id) not in ADMINS):
+        try:
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[{"type": "emoji", "emoji": "🤔"}],
+                is_big=False
+            )
+            context.chat_data[f"react_{update.message.message_id}"] = "🤔"
+        except Exception as e:
+            print(f"Failed to add reaction: {e}")
+
     # إذا كانت رسالة خاصة وليست من مدير، أرسلها للمدير
     if message.chat.type == "private" and str(update.effective_user.id) not in ADMINS:
         # تحقق إذا كانت الرسالة تحتوي على كلمات مفتاحية
@@ -331,6 +345,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     print(f"Failed to delete old response: {e}")
         
+        # تغيير التفاعل إلى 💯 إذا كان هناك رد تلقائي
+        if (update.effective_chat.type in ["group", "supergroup"] and 
+            str(update.effective_user.id) not in ADMINS):
+            try:
+                await context.bot.set_message_reaction(
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id,
+                    reaction=[{"type": "emoji", "emoji": "💯"}],
+                    is_big=False
+                )
+                context.chat_data[f"react_{update.message.message_id}"] = "💯"
+            except Exception as e:
+                print(f"Failed to update reaction: {e}")
+
         # إرسال الرد الجديد
         if should_delete:
             try:

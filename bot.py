@@ -14,14 +14,14 @@ from datetime import datetime
 
 # --- الإعدادات الأساسية ---
 TOKEN = "7926558096:AAEiSSyGzXbqJQLCTRoPdaeffSuQ6e6_e1E"
-ADMINS = ["634869382"]  # قائمة بآيدي المديرين
+ADMINS = ["634869382"]  # قائمة بآيدي المديرين (استبدل 123456789 بآيدي المدير الجديد)
 BROADCAST_CONFIRM = {}  # لتخزين بيانات الإذاعة قبل التأكيد
 
 # --- ملفات التخزين ---
 RESPONSES_FILE = "responses.json"
 STATS_FILE = "stats.json"
-USERS_FILE = "users.json"
-MESSAGES_FILE = "user_messages.json"
+USERS_FILE = "users.json"  # ملف جديد لتخزين معلومات المستخدمين
+MESSAGES_FILE = "user_messages.json"  # ملف جديد لتخزين رسائل المستخدمين
 
 # --- حالات المحادثة ---
 ADD_KEYWORD, ADD_RESPONSE = range(2)
@@ -61,10 +61,14 @@ async def export_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_stats(update, "export")
     
     if str(update.effective_user.id) not in ADMINS:
-        await update.message.reply_text("⚠️ ليس لديك صلاحية لتصدير الردود!")
+        await update.message.reply_text(
+            "⚠️ ليس لديك صلاحية لتصدير الردود!",
+            disable_web_page_preview=True
+        )
         return
     
     try:
+        # إنشاء ملف مؤقت
         with open(RESPONSES_FILE, 'rb') as file:
             await context.bot.send_document(
                 chat_id=update.effective_chat.id,
@@ -73,7 +77,10 @@ async def export_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filename="responses_backup.json"
             )
     except Exception as e:
-        await update.message.reply_text(f"❌ حدث خطأ أثناء تصدير الملف: {str(e)}")
+        await update.message.reply_text(
+            f"❌ حدث خطأ أثناء تصدير الملف: {str(e)}",
+            disable_web_page_preview=True
+        )
 
 def load_responses():
     return load_data(RESPONSES_FILE, {})
@@ -103,14 +110,18 @@ def save_users(users_data):
 # --- إرسال إشعار للمدير ---
 async def send_admin_notification(context, user):
     try:
-        user_info = f"👤 مستخدم جديد:\n🆔 ID: {user.id}\n📛 الاسم: {user.full_name}\n"
+        user_info = f"👤 مستخدم جديد:\n"
+        user_info += f"🆔 ID: {user.id}\n"
+        user_info += f"📛 الاسم: {user.full_name}\n"
         if user.username:
             user_info += f"🔗 اليوزر: @{user.username}\n"
+        
         user_info += f"\n📊 إجمالي المستخدمين الآن: {len(load_users()['users'])+1}"
         
         await context.bot.send_message(
-            chat_id=ADMINS[0],
-            text=user_info
+            chat_id=ADMINS[0],  # إرسال الإشعار للمدير الأول
+            text=user_info,
+            disable_web_page_preview=True
         )
     except Exception as e:
         print(f"Error sending admin notification: {e}")
@@ -118,10 +129,6 @@ async def send_admin_notification(context, user):
 # --- إرسال رسالة المستخدم للمدير ---
 async def forward_message_to_admin(context, user, message):
     try:
-        # إرسال إيموجي التفكير للرسائل الخاصة
-        if message.chat.type == "private":
-            temp_reaction = await message.reply_text("🤔 جاري البحث عن الخط، صبرًا...")
-        
         # حفظ الرسالة في قاعدة البيانات
         messages_data = load_user_messages()
         message_id = str(len(messages_data["messages"]) + 1)
@@ -134,8 +141,7 @@ async def forward_message_to_admin(context, user, message):
             "timestamp": str(datetime.now()),
             "replied": False,
             "reply_text": None,
-            "reply_timestamp": None,
-            "temp_reaction_id": temp_reaction.message_id if message.chat.type == "private" else None
+            "reply_timestamp": None
         }
         
         save_user_messages(messages_data)
@@ -147,7 +153,9 @@ async def forward_message_to_admin(context, user, message):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        admin_message = f"📨 رسالة جديدة من مستخدم:\n\n👤 الاسم: {user.full_name}\n🆔 ID: {user.id}\n"
+        admin_message = f"📨 رسالة جديدة من مستخدم:\n\n"
+        admin_message += f"👤 الاسم: {user.full_name}\n"
+        admin_message += f"🆔 ID: {user.id}\n"
         if user.username:
             admin_message += f"🔗 اليوزر: @{user.username}\n"
         admin_message += f"⏰ الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -157,7 +165,8 @@ async def forward_message_to_admin(context, user, message):
         await context.bot.send_message(
             chat_id=ADMINS[0],
             text=admin_message,
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
         )
         
         return message_id
@@ -215,6 +224,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     original_text = message.text if message.text else ""
     
+    # تحقق مما إذا بدأت الرسالة بـ . أو / (بعد إزالة أي مسافات)
+    should_delete = original_text.lstrip().startswith(('.', '/'))
+    
     # إذا كانت رسالة خاصة وليست من مدير، أرسلها للمدير
     if message.chat.type == "private" and str(update.effective_user.id) not in ADMINS:
         # تحقق إذا كانت الرسالة تحتوي على كلمات مفتاحية
@@ -250,19 +262,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,
-                text=combined_response
+                text=combined_response,
+                disable_web_page_preview=True
             )
             context.user_data['last_response_id'] = sent_message.message_id
         
-        # أرسل الرسالة للمدير
+        # أرسل الرسالة للمدير أيضاً
         await forward_message_to_admin(context, update.effective_user, message)
         return
-    
-    # إذا كانت رسالة في مجموعة من مستخدم عادي
-    if message.chat.type in ["group", "supergroup"] and str(update.effective_user.id) not in ADMINS:
-        # أرسل رسالة التفكير
-        temp_message = await message.reply_text("🤔 جاري البحث عن الخط، صبرًا...")
-        context.chat_data[f"temp_msg_{message.message_id}"] = temp_message.message_id
     
     # المعالجة العادية للرسائل في المجموعات أو من المديرين
     responses = load_responses()
@@ -301,54 +308,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         combined_response = "\n\n".join([item['response'] for item in found_responses])
         target_message = message.reply_to_message if message.reply_to_message else message
         
-        # إرسال الرد الجديد
-        sent_message = await context.bot.send_message(
-            chat_id=message.chat.id,
-            text=combined_response,
-            reply_to_message_id=target_message.message_id
-        )
+        # إنشاء معرف فريد لكل رسالة
+        message_key = f"{message.chat.id}_{message.message_id}"
         
-        # إذا كانت الرسالة من مستخدم عادي في مجموعة
-        if message.chat.type in ["group", "supergroup"] and str(update.effective_user.id) not in ADMINS:
-            # احصل على الرسالة المؤقتة
-            temp_msg_id = context.chat_data.get(f"temp_msg_{message.message_id}")
-            if temp_msg_id:
+        # إذا كانت الرسالة معدلة، نتحقق من التغييرات
+        if is_edited:
+            # احصل على البيانات السابقة لهذه الرسالة
+            prev_data = context.chat_data.get(message_key, {})
+            prev_keywords = prev_data.get('keywords', set())
+            
+            # إذا لم تتغير الكلمات المفتاحية، لا تفعل شيئاً
+            if prev_keywords == current_keywords:
+                return
+                
+            # إذا كان هناك رد قديم، حاول حذفه
+            if 'response_id' in prev_data:
                 try:
-                    # عدل الرسالة المؤقتة
-                    await context.bot.edit_message_text(
+                    await context.bot.delete_message(
                         chat_id=message.chat.id,
-                        message_id=temp_msg_id,
-                        text="💯 تمت الإجابة على طلبكم!"
-                    )
-                    
-                    # أرسل رسالة التأكيد مع رابط الرد
-                    reply_link = f"https://t.me/c/{str(message.chat.id)[4:]}/{sent_message.message_id}"
-                    await context.bot.send_message(
-                        chat_id=message.chat.id,
-                        text=f"تمت الإجابة على طلبكم، يمكنكم رؤية الرد هنا: {reply_link}",
-                        reply_to_message_id=message.message_id
+                        message_id=prev_data['response_id']
                     )
                 except Exception as e:
-                    print(f"Failed to edit temp message: {e}")
-    else:
-        # إذا لم يتم العثور على رد
-        if message.chat.type in ["group", "supergroup"] and str(update.effective_user.id) not in ADMINS:
-            temp_msg_id = context.chat_data.get(f"temp_msg_{message.message_id}")
-            if temp_msg_id:
-                try:
-                    await context.bot.edit_message_text(
-                        chat_id=message.chat.id,
-                        message_id=temp_msg_id,
-                        text="🤔 تم استلام طلبكم، جاري البحث عن حل..."
-                    )
-                    
-                    await context.bot.send_message(
-                        chat_id=message.chat.id,
-                        text="تم إرسال طلبكم للإدارة، سنرد عليكم قريبًا!",
-                        reply_to_message_id=message.message_id
-                    )
-                except Exception as e:
-                    print(f"Failed to update temp message: {e}")
+                    print(f"Failed to delete old response: {e}")
+        
+        # إرسال الرد الجديد
+        if should_delete:
+            try:
+                await message.delete()
+            except Exception as e:
+                print(f"Failed to delete message: {e}")
+            
+            try:
+                sent_message = await context.bot.send_message(
+                    chat_id=message.chat.id,
+                    text=combined_response,
+                    reply_to_message_id=target_message.message_id,
+                    disable_web_page_preview=True
+                )
+                # حفظ بيانات الرسالة والرد
+                context.chat_data[message_key] = {
+                    'keywords': current_keywords,
+                    'response_id': sent_message.message_id
+                }
+            except Exception as e:
+                print(f"Failed to send reply: {e}")
+                sent_message = await context.bot.send_message(
+                    chat_id=message.chat.id,
+                    text=combined_response,
+                    disable_web_page_preview=True
+                )
+                context.chat_data[message_key] = {
+                    'keywords': current_keywords,
+                    'response_id': sent_message.message_id
+                }
+        else:
+            sent_message = await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=combined_response,
+                reply_to_message_id=target_message.message_id,
+                disable_web_page_preview=True
+            )
+            context.chat_data[message_key] = {
+                'keywords': current_keywords,
+                'response_id': sent_message.message_id
+            }
+    return
 
 # --- معالجة الأزرار التفاعلية ---
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -396,7 +420,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await context.bot.send_message(
                         chat_id=query.message.chat.id,
-                        text=part
+                        text=part,
+                        disable_web_page_preview=True
                     )
         else:
             await query.edit_message_text(message_list)
@@ -423,27 +448,11 @@ async def reply_to_user_message(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = msg_data["user_id"]
     
     try:
-        # إذا كانت رسالة خاصة، عدل الإيموجي المؤقت
-        if msg_data.get("temp_reaction_id"):
-            try:
-                await context.bot.edit_message_text(
-                    chat_id=msg_data["user_id"],
-                    message_id=msg_data["temp_reaction_id"],
-                    text="💯 تمت الإجابة على طلبكم!"
-                )
-                
-                # أرسل رسالة التأكيد
-                await context.bot.send_message(
-                    chat_id=msg_data["user_id"],
-                    text="تمت الإجابة على طلبكم، شكرًا لصبركم!"
-                )
-            except Exception as e:
-                print(f"Failed to edit temp reaction: {e}")
-        
         # إرسال الرد للمستخدم
         await context.bot.send_message(
             chat_id=user_id,
-            text=f"💬 رد من الإدارة:\n\n{reply_text}"
+            text=f"💬 رد من الإدارة:\n\n{reply_text}",
+            disable_web_page_preview=True
         )
         
         # تحديث حالة الرسالة
@@ -989,3 +998,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

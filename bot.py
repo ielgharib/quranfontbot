@@ -501,7 +501,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     found_responses.sort(key=lambda x: x['position'])
     
     if found_responses:
-        combined_response = "\n\n".join([item['response'] for item in found_responses])
+        combined_response = "\n".join([f"» {item['response'].strip()}" for item in found_responses])
         target_message = message.reply_to_message if message.reply_to_message else message
         
         # إنشاء معرف فريد لكل رسالة

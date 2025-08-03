@@ -26,6 +26,8 @@ MESSAGES_FILE = "user_messages.json"  # ملف جديد لتخزين رسائل 
 # --- حالات المحادثة ---
 ADD_KEYWORD, ADD_RESPONSE = range(2)
 REPLY_TO_USER = range(1)
+EDIT_KEYWORD, EDIT_RESPONSE = range(2, 4)
+IMPORT_RESPONSES = range(4)
 
 # --- تحميل البيانات ---
 def load_data(filename, default_data):
@@ -82,11 +84,190 @@ async def export_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
             disable_web_page_preview=True
         )
 
+# --- إضافة دالة استيراد الردود ---
+async def import_responses(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_stats(update, "import")
+    
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text(
+            "⚠️ ليس لديك صلاحية لاستيراد الردود!",
+            disable_web_page_preview=True
+        )
+        return
+    
+    await update.message.reply_text(
+        "📥 الرجاء إرسال ملف الردود (JSON) ليتم استيراده:\n"
+        "أو /cancel لإلغاء العملية",
+        disable_web_page_preview=True
+    )
+    return IMPORT_RESPONSES
+
+async def process_import_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.document:
+        await update.message.reply_text(
+            "❌ لم يتم إرسال ملف. يرجى إرسال ملف JSON.",
+            disable_web_page_preview=True
+        )
+        return IMPORT_RESPONSES
+    
+    try:
+        file = await update.message.document.get_file()
+        await file.download_to_drive("temp_responses.json")
+        
+        with open("temp_responses.json", 'r', encoding='utf-8') as f:
+            imported_data = json.load(f)
+        
+        if not isinstance(imported_data, dict):
+            raise ValueError("تنسيق الملف غير صحيح")
+        
+        # دمج الردود الجديدة مع القديمة (القديمة لها الأولوية)
+        current_responses = load_responses()
+        for key, value in imported_data.items():
+            if key not in current_responses:
+                current_responses[key] = value
+        
+        save_responses(current_responses)
+        os.remove("temp_responses.json")
+        
+        await update.message.reply_text(
+            f"✅ تم استيراد الردود بنجاح!\n"
+            f"📊 عدد الردود الآن: {len(current_responses)}",
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ حدث خطأ أثناء استيراد الملف: {str(e)}",
+            disable_web_page_preview=True
+        )
+    return ConversationHandler.END
+
 def load_responses():
     return load_data(RESPONSES_FILE, {})
 
 def save_responses(responses):
     save_data(RESPONSES_FILE, responses)
+
+# --- إضافة دالة تعديل الردود ---
+async def start_edit_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text(
+            "⚠️ ليس لديك صلاحية لتعديل الردود!",
+            disable_web_page_preview=True
+        )
+        return ConversationHandler.END
+    
+    responses = load_responses()
+    if not responses:
+        await update.message.reply_text(
+            "❌ لا توجد ردود مسجلة لتعديلها.",
+            disable_web_page_preview=True
+        )
+        return ConversationHandler.END
+    
+    keyboard = [[InlineKeyboardButton(keyword, callback_data=f"edit_{keyword}")] for keyword in responses.keys()]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "📝 اختر الرد الذي تريد تعديله:",
+        reply_markup=reply_markup,
+        disable_web_page_preview=True
+    )
+    return EDIT_KEYWORD
+
+async def edit_keyword_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    keyword = query.data.split("_")[1]
+    context.user_data["edit_keyword"] = keyword
+    
+    await query.edit_message_text(
+        f"🔹 الكلمة المحددة: {keyword}\n\n"
+        "اختر ما تريد تعديله:\n"
+        "1. تعديل الكلمة نفسها\n"
+        "2. تعديل الرد فقط\n"
+        "3. تعديل الكلمة والرد معاً\n\n"
+        "أرسل الرقم المناسب أو /cancel للإلغاء",
+        disable_web_page_preview=True
+    )
+    return EDIT_RESPONSE
+
+async def process_edit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = update.message.text
+    keyword = context.user_data["edit_keyword"]
+    responses = load_responses()
+    
+    if choice not in ["1", "2", "3"]:
+        await update.message.reply_text(
+            "❌ خيار غير صحيح. يرجى إرسال 1، 2 أو 3.",
+            disable_web_page_preview=True
+        )
+        return EDIT_RESPONSE
+    
+    context.user_data["edit_choice"] = choice
+    
+    if choice == "1":
+        await update.message.reply_text(
+            "✍️ الرجاء إرسال الكلمة الجديدة:",
+            disable_web_page_preview=True
+        )
+    elif choice == "2":
+        await update.message.reply_text(
+            f"✍️ الرجاء إرسال الرد الجديد للكلمة '{keyword}':",
+            disable_web_page_preview=True
+        )
+    else:  # choice == "3"
+        await update.message.reply_text(
+            "✍️ الرجاء إرسال الكلمة الجديدة ثم الرد الجديد في رسالة واحدة بهذا الشكل:\n"
+            "الكلمة الجديدة\nالرد الجديد",
+            disable_web_page_preview=True
+        )
+    
+    return EDIT_RESPONSE
+
+async def save_edited_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = context.user_data["edit_choice"]
+    old_keyword = context.user_data["edit_keyword"]
+    responses = load_responses()
+    response_text = responses[old_keyword]
+    new_text = update.message.text
+    
+    try:
+        if choice == "1":  # تعديل الكلمة فقط
+            responses[new_text] = response_text
+            del responses[old_keyword]
+            message = f"✅ تم تغيير الكلمة من '{old_keyword}' إلى '{new_text}'"
+        elif choice == "2":  # تعديل الرد فقط
+            responses[old_keyword] = new_text
+            message = f"✅ تم تحديث الرد للكلمة '{old_keyword}'"
+        else:  # تعديل الكلمة والرد
+            parts = new_text.split("\n", 1)
+            if len(parts) != 2:
+                raise ValueError("يجب إرسال الكلمة والرد في سطرين منفصلين")
+            
+            new_keyword, new_response = parts
+            del responses[old_keyword]
+            responses[new_keyword] = new_response
+            message = f"✅ تم تغيير الكلمة من '{old_keyword}' إلى '{new_keyword}' وتحديث الرد"
+        
+        save_responses(responses)
+        await update.message.reply_text(
+            f"{message}\n📊 عدد الردود الآن: {len(responses)}",
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ حدث خطأ أثناء التعديل: {str(e)}",
+            disable_web_page_preview=True
+        )
+    
+    # تنظيف البيانات المؤقتة
+    if "edit_keyword" in context.user_data:
+        del context.user_data["edit_keyword"]
+    if "edit_choice" in context.user_data:
+        del context.user_data["edit_choice"]
+    
+    return ConversationHandler.END
 
 # --- إدارة الإحصائيات ---
 def load_stats():
@@ -222,10 +403,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # تحقق إذا كانت الرسالة معدلة
     is_edited = bool(update.edited_message)
     
-    original_text = message.text if message.text else ""
+    # استخراج النص من الرسالة سواء كانت نصية أو تحتوي على تسمية توضيحية
+    original_text = message.text if message.text else (message.caption if message.caption else "")
     
     # تحقق مما إذا بدأت الرسالة بـ . أو / (بعد إزالة أي مسافات)
-    should_delete = original_text.lstrip().startswith(('.', '/'))
+    should_delete = original_text.lstrip().startswith(('.', '/')) if original_text else False
     
     # إضافة تفاعل 🤔 لرسائل المستخدمين العاديين في المجموعات
     if (update.effective_chat.type in ["group", "supergroup"] and 
@@ -951,12 +1133,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "",
             "⚙️ الأوامر الإدارية:",
             "/add - إضافة رد جديد",
+            "/edit - تعديل رد موجود",
             "/remove <الكلمة> - حذف رد",
             "/list - عرض كل الردود",
             "/stats - إحصائيات البوت",
             "/users - عرض المستخدمين",
             "/messages - عرض رسائل المستخدمين",
-            "/broadcast - إرسال إذاعة للمستخدمين"
+            "/broadcast - إرسال إذاعة للمستخدمين",
+            "/export - تصدير الردود",
+            "/import - استيراد الردود"
         ])
     
     start_message.extend([
@@ -977,11 +1162,33 @@ def main():
     application = Application.builder().token(TOKEN).build()
     
     # محادثة إضافة الردود
-    conv_handler = ConversationHandler(
+    add_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("add", start_add_response)],
         states={
             ADD_KEYWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_keyword)],
             ADD_RESPONSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_response_text)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_add_response)]
+    )
+    
+    # محادثة تعديل الردود
+    edit_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("edit", start_edit_response)],
+        states={
+            EDIT_KEYWORD: [CallbackQueryHandler(edit_keyword_choice, pattern="^edit_")],
+            EDIT_RESPONSE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, process_edit_choice),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_response)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_add_response)]
+    )
+    
+    # محادثة استيراد الردود
+    import_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("import", import_responses)],
+        states={
+            IMPORT_RESPONSES: [MessageHandler(filters.Document.ALL | filters.TEXT & ~filters.COMMAND, process_import_file)]
         },
         fallbacks=[CommandHandler("cancel", cancel_add_response)]
     )
@@ -1007,7 +1214,9 @@ def main():
     )
     
     # تسجيل المعالجات
-    application.add_handler(conv_handler)
+    application.add_handler(add_conv_handler)
+    application.add_handler(edit_conv_handler)
+    application.add_handler(import_conv_handler)
     application.add_handler(reply_conv_handler)
     application.add_handler(broadcast_conv_handler)
     application.add_handler(CallbackQueryHandler(button_callback))
@@ -1019,6 +1228,8 @@ def main():
     application.add_handler(CommandHandler("messages", view_user_messages))
     application.add_handler(CommandHandler("admin", check_admin))
     application.add_handler(CommandHandler("export", export_responses))
+    application.add_handler(CommandHandler("import", import_responses))
+    application.add_handler(CommandHandler("edit", start_edit_response))
     application.add_handler(MessageHandler(filters.ALL, handle_message))
     
     print("🤖 البوت يعمل الآن...")
@@ -1026,4 +1237,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

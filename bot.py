@@ -454,7 +454,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # إذا وجدت ردود تلقائية، أرسلها
         if found_responses:
             found_responses.sort(key=lambda x: x['position'])
-            combined_response = "\n\n".join([item['response'] for item in found_responses])
+            combined_response = "\n".join([f"» {item['response']}" for item in found_responses])
             
             sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,

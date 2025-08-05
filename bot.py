@@ -22,12 +22,14 @@ RESPONSES_FILE = "responses.json"
 STATS_FILE = "stats.json"
 USERS_FILE = "users.json"  # ملف جديد لتخزين معلومات المستخدمين
 MESSAGES_FILE = "user_messages.json"  # ملف جديد لتخزين رسائل المستخدمين
+SHORTCUTS_FILE = "shortcuts.json"  # ملف جديد لتخزين الاختصارات
 
 # --- حالات المحادثة ---
 ADD_KEYWORD, ADD_RESPONSE = range(2)
 REPLY_TO_USER = range(1)
 EDIT_KEYWORD, EDIT_RESPONSE = range(2, 4)
 IMPORT_RESPONSES = range(4)
+ADD_SHORTCUT, ADD_SHORTCUT_RESPONSE = range(5, 7)  # نضيف حالتين جديدتين
 
 # --- تحميل البيانات ---
 def load_data(filename, default_data):
@@ -50,7 +52,80 @@ def save_data(filename, data):
     
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+        
+# --- إدارة الاختصارات ---
+def load_shortcuts():
+    return load_data(SHORTCUTS_FILE, {})
 
+def save_shortcuts(shortcuts):
+    save_data(SHORTCUTS_FILE, shortcuts)
+
+# --- تصدير الاختصارات ---
+async def export_shortcuts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_stats(update, "export_shortcuts")
+    
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text("⚠️ ليس لديك صلاحية لتصدير الاختصارات!")
+        return
+    
+    try:
+        with open(SHORTCUTS_FILE, 'rb') as file:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=file,
+                caption=f"📁 ملف الاختصارات الحالي\n📊 عدد الاختصارات: {len(load_shortcuts())}",
+                filename="shortcuts_backup.json"
+            )
+    except Exception as e:
+        await update.message.reply_text(f"❌ حدث خطأ أثناء تصدير الملف: {str(e)}")
+
+# --- استيراد الاختصارات ---
+async def import_shortcuts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_stats(update, "import_shortcuts")
+    
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text("⚠️ ليس لديك صلاحية لاستيراد الاختصارات!")
+        return
+    
+    await update.message.reply_text(
+        "📥 الرجاء إرسال ملف الاختصارات (JSON) ليتم استيراده:\n"
+        "أو /cancel لإلغاء العملية"
+    )
+    return "IMPORT_SHORTCUTS"
+
+async def process_shortcuts_import(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.document:
+        await update.message.reply_text("❌ لم يتم إرسال ملف. يرجى إرسال ملف JSON.")
+        return "IMPORT_SHORTCUTS"
+    
+    try:
+        file = await update.message.document.get_file()
+        await file.download_to_drive("temp_shortcuts.json")
+        
+        with open("temp_shortcuts.json", 'r', encoding='utf-8') as f:
+            imported_data = json.load(f)
+        
+        if not isinstance(imported_data, dict):
+            raise ValueError("تنسيق الملف غير صحيح")
+        
+        # دمج الاختصارات الجديدة مع القديمة (القديمة لها الأولوية)
+        current_shortcuts = load_shortcuts()
+        for key, value in imported_data.items():
+            if key not in current_shortcuts:
+                current_shortcuts[key] = value
+        
+        save_shortcuts(current_shortcuts)
+        os.remove("temp_shortcuts.json")
+        
+        await update.message.reply_text(
+            f"✅ تم استيراد الاختصارات بنجاح!\n"
+            f"📊 عدد الاختصارات الآن: {len(current_shortcuts)}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ حدث خطأ أثناء استيراد الملف: {str(e)}")
+    
+    return ConversationHandler.END
+    
 # --- إدارة رسائل المستخدمين ---
 def load_user_messages():
     return load_data(MESSAGES_FILE, {"messages": {}})
@@ -1142,6 +1217,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/broadcast - إرسال إذاعة للمستخدمين",
             "/export - تصدير الردود",
             "/import - استيراد الردود"
+            "/export_shortcuts - تصدير ملف الاختصارات",
+            "/import_shortcuts - استيراد ملف الاختصارات",
         ])
     
     start_message.extend([
@@ -1213,6 +1290,14 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_broadcast)]
     )
     
+     # محادثة استيراد الاختصارات
+    import_shortcuts_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("import_shortcuts", import_shortcuts)],
+        states={
+            "IMPORT_SHORTCUTS": [MessageHandler(filters.Document.ALL | filters.TEXT & ~filters.COMMAND, process_shortcuts_import)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_add_response)]
+    )
     # تسجيل المعالجات
     application.add_handler(add_conv_handler)
     application.add_handler(edit_conv_handler)
@@ -1231,9 +1316,13 @@ def main():
     application.add_handler(CommandHandler("import", import_responses))
     application.add_handler(CommandHandler("edit", start_edit_response))
     application.add_handler(MessageHandler(filters.ALL, handle_message))
+      # تسجيل المعالجات الجديدة
+    application.add_handler(import_shortcuts_conv_handler)
+    application.add_handler(CommandHandler("export_shortcuts", export_shortcuts))
     
     print("🤖 البوت يعمل الآن...")
     application.run_polling()
 
 if __name__ == "__main__":
     main()
+

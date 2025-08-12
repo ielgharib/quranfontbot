@@ -15,7 +15,7 @@ import logging
 from telegram.constants import ChatType
 
 # --- الإعدادات الأساسية ---
-TOKEN = "8121446313:AAGEUUnViMDuf504BDm-cgBpdUk33CnJq-M"
+TOKEN = "7926558096:AAEiSSyGzXbqJQLCTRoPdaeffSuQ6e6_e1E"
 ADMINS = ["634869382"]  # قائمة بآيدي المديرين
 BROADCAST_CONFIRM = {}  # لتخزين بيانات الإذاعة قبل التأكيد
 
@@ -1254,4 +1254,5 @@ def main():
     application.run_polling()
 
 if __name__ == "__main__":
+
     main()

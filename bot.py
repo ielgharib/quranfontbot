@@ -1065,7 +1065,7 @@ async def show_developer_info(update: Update, context: ContextTypes.DEFAULT_TYPE
         developer_bio = developer.bio if developer.bio else "لا يوجد بايو"
         
         message = [
-            "👨‍💻 معلومات المطور:",
+            "👨‍💻 معلومات المطور :",
             f"📛 الاسم: {developer_name}",
             f"🔗 اليوزر: {developer_username}",
             f"📌 البايو: {developer_bio}"
@@ -1149,8 +1149,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # إنشاء الأزرار الشفافة
     keyboard = [
-        [InlineKeyboardButton("👨‍💻 معلومات المطور", url="https://t.me/Am9li9")],
-        [InlineKeyboardButton("📚 مجموعة نقاشات الخطوط", url="https://t.me/ElgharibFonts")]
+        [InlineKeyboardButton("👨‍💻 حساب المطور", url="https://t.me/Am9li9")],
+        [InlineKeyboardButton("📚 نقاشات خطوط أحمد الغريب", url="https://t.me/ElgharibFonts")]
     ]
     
     # إضافة زر القناة إذا كان موجودًا
@@ -1255,4 +1255,5 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 

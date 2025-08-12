@@ -1073,13 +1073,13 @@ async def show_developer_info(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # إضافة الأزرار الشفافة
         keyboard = [
-            [InlineKeyboardButton("📚 مجموعة نقاشات الخطوط", url="https://t.me/ElgharibFonts")]
+            [InlineKeyboardButton("📚 نقاشات خطوط أحمد الغريب", url="https://t.me/ElgharibFonts")]
         ]
         
         # إضافة زر القناة إذا كان موجودًا
         channel_data = load_channel()
         if channel_data["channel_url"]:
-            keyboard.append([InlineKeyboardButton("📢 قناة الخطوط", url=channel_data["channel_url"])])
+            keyboard.append([InlineKeyboardButton("📢 قناة خطوط قرآن", url=channel_data["channel_url"])])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -1137,11 +1137,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_admin_notification(context, update.effective_user)
     
     start_message = [
-        "مرحبًا! 👋 أنا بوت الخطوط التلقائي.",
+        "مرحبًا! 👋 أنا بوت خطوط أحمد الغريب .",
         "",
         "🎯 كيفية الاستخدام:",
         "- عندما يتم ذكر أي كلمة مسجلة، سأقوم بالرد تلقائياً",
-        "- إذا تم الرد على رسالة تحتوي كلمة مسجلة، سأرد على الرسالة الأصلية",
         "- يمكنك إرسال رسائل خاصة لي وسيتم توجيهها للإدارة",
         "",
         "🔧 تم تطوير وبرمجة البوت بواسطة أحمد الغريب",
@@ -1256,3 +1255,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+

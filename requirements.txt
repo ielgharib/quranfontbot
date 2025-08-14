@@ -1,1 +1,5 @@
-python-telegram-bot==20.3
+python-telegram-bot==20.6
+Pillow==10.1.0
+fonttools==4.44.3
+rarfile==4.0
+python-potrace==0.1.3

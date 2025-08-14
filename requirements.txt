@@ -1,5 +1,5 @@
-python-telegram-bot==20.6
-Pillow==10.1.0
-fonttools==4.44.3
+python-telegram-bot==20.3
+pillow==10.0.0
+fonttools==4.39.3
 rarfile==4.0
-potracer==0.1.0
+python-dotenv==1.0.0

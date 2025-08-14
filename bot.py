@@ -1388,7 +1388,7 @@ async def convert_to_svg(update: Update, context: ContextTypes.DEFAULT_TYPE):
             img = Image.open(img_path).convert("L").point(lambda x: 0 if x < 128 else 255, "1")
             img.save(pbm_path)
             
-            subprocess.run(["potrace", pbm_path, "-s", "-o", svg_path], check=True)
+            subprocess.run(["/usr/bin/potrace", pbm_path, "-s", "-o", svg_path], check=True)
             
             await context.bot.send_document(
                 chat_id=update.effective_chat.id,
@@ -2090,3 +2090,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

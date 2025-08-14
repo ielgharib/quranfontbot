@@ -1,17 +1,10 @@
-# استخدام نسخة بايثون خفيفة
-FROM python:3.12-slim
+FROM python:3.10-slim
 
-# تثبيت potrace + التحديث
-RUN apt-get update && apt-get install -y potrace && apt-get clean
-
-# تعيين مجلد العمل داخل الحاوية
 WORKDIR /app
 
-# نسخ كل الملفات إلى داخل الحاوية
-COPY . /app
-
-# تثبيت مكتبات بايثون
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# تشغيل البوت
+COPY . .
+
 CMD ["python", "bot.py"]

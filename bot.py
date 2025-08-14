@@ -1,3 +1,6 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()  # لقراءة متغيرات البيئة من ملف .env
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
@@ -22,7 +25,7 @@ import rarfile  # Requires 'unrar' installed
 import time  # For timestamp in file names
 
 # --- الإعدادات الأساسية ---
-TOKEN = "7167522157:AAHdwGlqPNMKDPTY7Z1Tss529pfdcVVq_M8"
+TOKEN = os.getenv("TELEGRAM_TOKEN")  # بدلاً من التوكن الثابت
 ADMINS = ["634869382"]  # قائمة بآيدي المديرين
 BROADCAST_CONFIRM = {}  # لتخزين بيانات الإذاعة قبل التأكيد
 
@@ -2086,4 +2089,5 @@ def main():
         raise
 
 if __name__ == "__main__":
+
     main()

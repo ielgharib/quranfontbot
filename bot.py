@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 load_dotenv()  # لتحميل متغيرات البيئة من ملف .env
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton
@@ -421,6 +422,98 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
     return
 
+# --- إضافة ردود ---
+async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text("⚠️ ليس لديك صلاحية لإضافة الردود!")
+        return ConversationHandler.END
+    await update.message.reply_text("🔑 أرسل الكلمة المفتاحية الجديدة:\nأو /cancel للإلغاء")
+    return ADD_KEYWORD
+
+async def add_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyword = update.message.text.strip()
+    responses = load_responses()
+    if keyword in responses:
+        await update.message.reply_text("⚠️ هذه الكلمة موجودة بالفعل! أرسل كلمة أخرى أو /cancel")
+        return ADD_KEYWORD
+    context.user_data['new_keyword'] = keyword
+    await update.message.reply_text("📝 أرسل الرد المرتبط بهذه الكلمة:\nأو /cancel للإلغاء")
+    return ADD_RESPONSE
+
+async def add_response_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    response = update.message.text.strip()
+    keyword = context.user_data.get('new_keyword')
+    if not keyword:
+        await update.message.reply_text("❌ خطأ! ابدأ من جديد بـ /add")
+        return ConversationHandler.END
+    responses = load_responses()
+    responses[keyword] = response
+    save_responses(responses)
+    await update.message.reply_text(f"✅ تم إضافة الرد بنجاح للكلمة: {keyword}")
+    del context.user_data['new_keyword']
+    return ConversationHandler.END
+
+# --- حذف رد ---
+async def remove_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text("⚠️ ليس لديك صلاحية لحذف الردود!")
+        return
+    if not context.args:
+        await update.message.reply_text("❌ يرجى تحديد الكلمة المفتاحية لحذفها! مثال: /remove كلمة")
+        return
+    keyword = ' '.join(context.args).strip()
+    responses = load_responses()
+    if keyword in responses:
+        del responses[keyword]
+        save_responses(responses)
+        await update.message.reply_text(f"✅ تم حذف الرد للكلمة: {keyword}")
+    else:
+        await update.message.reply_text(f"❌ الكلمة {keyword} غير موجودة!")
+
+# --- إعادة تشغيل البوت ---
+async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text("⚠️ ليس لديك صلاحية لإعادة تشغيل البوت!")
+        return
+    await update.message.reply_text("🔄 جاري إعادة التشغيل...")
+    sys.exit(0)
+
+# --- إلغاء العملية ---
+async def cancel_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ تم إلغاء العملية.")
+    return ConversationHandler.END
+
+# --- الرد على رسالة المستخدم ---
+async def reply_to_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) not in ADMINS:
+        await update.message.reply_text("⚠️ ليس لديك صلاحية للرد!")
+        return ConversationHandler.END
+    reply_text = update.message.text
+    message_id = context.user_data.get("reply_message_id")
+    if not message_id:
+        await update.message.reply_text("❌ خطأ! لا يوجد رسالة للرد عليها.")
+        return ConversationHandler.END
+    messages_data = load_user_messages()
+    if message_id not in messages_data["messages"]:
+        await update.message.reply_text("❌ الرسالة غير موجودة!")
+        return ConversationHandler.END
+    user_message = messages_data["messages"][message_id]
+    user_id = user_message["user_id"]
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=reply_text
+        )
+        messages_data["messages"][message_id]["replied"] = True
+        messages_data["messages"][message_id]["reply_text"] = reply_text
+        messages_data["messages"][message_id]["reply_timestamp"] = str(datetime.now())
+        save_user_messages(messages_data)
+        await update.message.reply_text("✅ تم إرسال الرد بنجاح!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ أثناء إرسال الرد: {str(e)}")
+    del context.user_data["reply_message_id"]
+    return ConversationHandler.END
+
 # --- وظائف مساعدة للكيبورد ---
 def get_options_keyboard():
     keyboard = [
@@ -468,9 +561,9 @@ async def show_options_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_developer_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     dev_info = "👨‍💻 معلومات المدير:\n\n" \
-               "اسم المدير: [اسم المدير]\n" \
-               "وصف: [وصف مختصر]\n" \
-               "رابط: [رابط إذا وجد]"
+               "اسم المدير: أحمد الغريب\n" \
+               "وصف: مطور البوت\n" \
+               "رابط: @ElgharibFonts"
     await query.edit_message_text(dev_info)
 
 # --- معالجة الأزرار التفاعلية ---

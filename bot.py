@@ -24,7 +24,7 @@ import rarfile  # Requires 'unrar' installed
 import time  # For timestamp in file names
 
 # --- الإعدادات الأساسية ---
-TOKEN = os.environ.get("TELEGRAM_TOKEN") or "7167522157:AAHdwGlqPNMKDPTY7Z1Tss529pfdcVVq_M8"  # النسخة الاحتياطية لأغراض الاختبار
+TOKEN = os.environ.get("TELEGRAM_TOKEN") or "7780931009:AAFGeKuyBHShvg5TFNbKCEpp_9Ug-3UrVvc"  # النسخة الاحتياطية لأغراض الاختبار
 ADMINS = ["634869382"]  # قائمة بآيدي المديرين
 
 # --- ملفات التخزين ---
@@ -1209,4 +1209,5 @@ def main():
         raise
 
 if __name__ == "__main__":
+
     main()

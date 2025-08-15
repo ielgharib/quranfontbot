@@ -266,6 +266,14 @@ async def is_admin_or_creator(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     return False
 
+# --- تحقق ما إذا كان يمكن استخدام الأداة ---
+def can_use_tool(chat_type, user_id):
+    if chat_type == ChatType.PRIVATE:
+        return True
+    elif chat_type in [ChatType.GROUP, ChatType.SUPERGROUP] and str(user_id) in ADMINS:
+        return True
+    return False
+
 # --- معالجة الرسائل المحدثة ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message and not update.edited_message:
@@ -420,10 +428,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     if query.data == "options_menu":
+        if not can_use_tool(update.effective_chat.type, query.from_user.id):
+            await query.edit_message_text("⚠️ لوحة الخيارات متاحة فقط في الخاص أو للمديرين في المجموعات!")
+            return
         await show_options_menu(update, context)
         return OPTIONS_MENU
     
     if query.data == "developer_info":
+        if not can_use_tool(update.effective_chat.type, query.from_user.id):
+            await query.edit_message_text("⚠️ معلومات المدير متاحة فقط في الخاص أو للمديرين في المجموعات!")
+            return
         await show_developer_info(update, context)
         return
     
@@ -720,6 +734,10 @@ async def handle_options_choice(update: Update, context: ContextTypes.DEFAULT_TY
     if choice == "🔙 رجوع":
         return await start(update, context)
     
+    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
+        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
+        return ConversationHandler.END
+    
     elif choice == "🖼️ تحويل صورة إلى SVG":
         keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -760,6 +778,10 @@ async def handle_options_choice(update: Update, context: ContextTypes.DEFAULT_TY
 
 # --- وظيفة تحويل الصورة إلى SVG ---
 async def wait_for_svg_images(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
+        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
+        return ConversationHandler.END
+    
     if update.message.text == "🚀 بدء التحويل":
         if not context.user_data.get('svg_images'):
             await update.message.reply_text("❌ لا توجد صور لتحويلها.")
@@ -872,6 +894,10 @@ async def wait_for_svg_images(update: Update, context: ContextTypes.DEFAULT_TYPE
     
 # --- وظيفة تحويل صيغة الخط ---
 async def convert_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
+        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
+        return ConversationHandler.END
+    
     if update.message.text == "🔙 رجوع":
         return await show_options_menu(update, context)
     
@@ -904,6 +930,10 @@ async def convert_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CHOOSE_FONT_FORMAT
 
 async def choose_font_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
+        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
+        return ConversationHandler.END
+    
     choice = update.message.text
     
     if choice == "🔙 رجوع":
@@ -984,6 +1014,10 @@ async def choose_font_format(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # --- وظيفة فك ضغط الملفات ---
 async def extract_archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
+        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
+        return ConversationHandler.END
+    
     if update.message.text == "🔙 رجوع":
         return await show_options_menu(update, context)
     
@@ -1211,4 +1245,3 @@ def main():
 if __name__ == "__main__":
 
     main()
-

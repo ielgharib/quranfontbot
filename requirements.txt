@@ -2,6 +2,5 @@ python-telegram-bot[ext]>=20.0
 python-dotenv
 pillow
 fonttools
-potrace
 rarfile
 python-unrar

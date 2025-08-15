@@ -1,6 +1,5 @@
-python-telegram-bot[ext]>=20.0
-python-dotenv
-pillow
-fonttools
-rarfile
-python-unrar
+python-telegram-bot==21.4
+python-dotenv==1.0.1
+Pillow==10.4.0
+fonttools==4.53.1
+rarfile==4.2

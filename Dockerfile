@@ -1,6 +1,11 @@
 # Use a slim Python base image matching your script's Python version (3.12.3)
 FROM python:3.12-slim
 
+# Overwrite apt sources.list to enable contrib, non-free, and non-free-firmware components
+RUN echo "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list
+
 # Install system dependencies for potrace and unrar
 RUN apt-get update && apt-get install -y \
     potrace \

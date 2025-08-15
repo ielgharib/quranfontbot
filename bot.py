@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 load_dotenv()  # لتحميل متغيرات البيئة من ملف .env
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton
@@ -669,7 +670,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "",
         "🔹 /start - بدء استخدام البوت وعرض رسالة الترحيب",
         "🔹 /help - عرض هذه القائمة",
-        "",        "",
+        "",
+        "🎛️ أوامر الخيارات:",
+        "🔸 /options - عرض لوحة الخيارات (تحويل الصور، الخطوط، إلخ)",
+        "",
         "🛠️ أوامر المديرين:",
         "🔹 /add - إضافة رد جديد",
         "🔹 /remove <الكلمة> - حذف رد",
@@ -715,8 +719,8 @@ def main():
         add_response_handler = ConversationHandler(
             entry_points=[CommandHandler("add", start_add_response)],
             states={
-                ADD_KEYWORD: [MessageHandler(filters.Text & ~filters.Command, add_keyword)],
-                ADD_RESPONSE: [MessageHandler(filters.Text & ~filters.Command, add_response_text)]
+                ADD_KEYWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_keyword)],
+                ADD_RESPONSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_response_text)]
             },
             fallbacks=[CommandHandler("cancel", cancel_add_response)]
         )
@@ -725,7 +729,7 @@ def main():
         reply_handler = ConversationHandler(
             entry_points=[CallbackQueryHandler(button_callback, pattern="^reply_")],
             states={
-                REPLY_TO_USER: [MessageHandler(filters.Text & ~filters.Command, reply_to_user_message)]
+                REPLY_TO_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, reply_to_user_message)]
             },
             fallbacks=[CommandHandler("cancel", cancel_add_response)],
             per_message=True
@@ -735,7 +739,7 @@ def main():
         import_handler = ConversationHandler(
             entry_points=[CommandHandler("import", import_responses)],
             states={
-                IMPORT_RESPONSES: [MessageHandler(filters.Document.ALL, process_import_file)]
+                IMPORT_RESPONSES: [MessageHandler(filters.DOCUMENT.ALL, process_import_file)]
             },
             fallbacks=[CommandHandler("cancel", cancel_add_response)]
         )
@@ -744,11 +748,11 @@ def main():
         options_handler = ConversationHandler(
             entry_points=[CallbackQueryHandler(button_callback, pattern="^options_menu$")],
             states={
-                OPTIONS_MENU: [MessageHandler(filters.Text & ~filters.Command, handle_options_choice)],
-                WAIT_FOR_SVG_IMAGES: [MessageHandler(filters.Photo | filters.Document.IMAGE & ~filters.Command, wait_for_svg_images)],
-                CONVERT_FONT: [MessageHandler(filters.Document.ALL & ~filters.Command, convert_font)],
-                CHOOSE_FONT_FORMAT: [MessageHandler(filters.Text & ~filters.Command, choose_font_format)],
-                EXTRACT_ARCHIVE: [MessageHandler(filters.Document.ALL & ~filters.Command, extract_archive)]
+                OPTIONS_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_options_choice)],
+                WAIT_FOR_SVG_IMAGES: [MessageHandler((filters.PHOTO | filters.DOCUMENT.IMAGE) & ~filters.COMMAND, wait_for_svg_images)],
+                CONVERT_FONT: [MessageHandler(filters.DOCUMENT.ALL & ~filters.COMMAND, convert_font)],
+                CHOOSE_FONT_FORMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_font_format)],
+                EXTRACT_ARCHIVE: [MessageHandler(filters.DOCUMENT.ALL & ~filters.COMMAND, extract_archive)]
             },
             fallbacks=[CommandHandler("cancel", cancel_add_response)],
             per_message=True
@@ -759,8 +763,8 @@ def main():
         application.add_handler(CallbackQueryHandler(button_callback))
 
         # --- أخيراً: أضف الـ MessageHandler العام (للرسائل غير المعالجة) ---
-        application.add_handler(MessageHandler(filters.Text | filters.Photo | filters.Document.ALL, handle_message))
-        application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_message))
+        application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.DOCUMENT.ALL, handle_message))
+        application.add_handler(MessageHandler(filters.StatusUpdate.ANY, handle_message))
 
         # --- Start the Bot ---
         print("✅ Bot initialized successfully. Starting polling...")

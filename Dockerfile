@@ -1,22 +1,23 @@
-FROM python:3.10-slim
+# Use a slim Python base image matching your script's Python version (3.12.3)
+FROM python:3.12-slim
 
-WORKDIR /app
-
-# تثبيت الأدوات النظامية المطلوبة
-RUN apt-get update && \
-    apt-get install -y \
+# Install system dependencies for potrace and unrar
+RUN apt-get update && apt-get install -y \
     potrace \
-    python3-pip \
+    unrar \
     && rm -rf /var/lib/apt/lists/*
 
-# تحديث pip أولاً
-RUN pip install --upgrade pip
+# Set working directory
+WORKDIR /app
 
+# Copy requirements.txt first for better caching
 COPY requirements.txt .
 
-# تثبيت متطلبات Python
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the rest of the application code
 COPY . .
 
+# Set the entrypoint to run your bot
 CMD ["python", "bot.py"]

@@ -988,6 +988,7 @@ def main():
                 REPLY_TO_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, reply_to_user_message)]
             },
             fallbacks=[CommandHandler("cancel", cancel_add_response)]
+            
         )
         application.add_handler(reply_handler)
 
@@ -1005,7 +1006,7 @@ def main():
     states={
         OPTIONS_MENU: [CallbackQueryHandler(button_callback)],
         WAIT_FOR_SVG_IMAGES: [
-            MessageHandler(filters.PHOTO | filters.Document.MIME_TYPES(["image/jpeg", "image/jpg"]), wait_for_svg_images),
+            MessageHandler(filters.PHOTO | filters.Document.IMAGE, wait_for_svg_images),
             CallbackQueryHandler(button_callback)
         ],
         CONVERT_FONT: [

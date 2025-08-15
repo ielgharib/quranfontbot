@@ -731,6 +731,11 @@ async def show_options_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_options_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = update.message.text
     
+    # تعديل هنا: إضافة تحقق للزر "🎛️ العودة إلى القائمة الرئيسية"
+    if choice == "🎛️ العودة إلى القائمة الرئيسية":
+        await show_options_menu(update, context)
+        return OPTIONS_MENU
+    
     if choice == "🔙 رجوع":
         return await start(update, context)
     
@@ -831,7 +836,8 @@ async def wait_for_svg_images(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"✅ تم تحويل جميع الصور بنجاح!",
             reply_markup=reply_markup
         )
-        return ConversationHandler.END
+        # تعديل هنا: غير return ConversationHandler.END إلى return OPTIONS_MENU
+        return OPTIONS_MENU
 
     if update.message.text == "🔙 رجوع":
         # تنظيف الملفات المؤقتة

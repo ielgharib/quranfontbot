@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()  # لتحميل متغيرات البيئة من ملف .env
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyParameters
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -202,22 +202,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ميزة جديدة: التحقق إذا كان الرد على رسالة الشخص نفسه (تكرار)
-    reply_to_self_key = None
-    if message.reply_to_message and message.reply_to_message.from_user.id == message.from_user.id:
-        reply_to_self_key = f"reply_to_self_{message.reply_to_message.message_id}"
-        if context.chat_data.get(reply_to_self_key, False):
-            # إذا تم الرد سابقًا على هذه الرسالة من قبل الشخص نفسه، أرسل التنبيه
-            await message.reply_text(
-                "لا تُكرر واصبر، رسالتك واضحة لنا، دعنا نبحث.",
-                disable_web_page_preview=True,
-                parse_mode="MarkdownV2"
-            )
-            return
-        else:
-            # سجل أن هذا الرد تم، لمنع التكرار في المرات القادمة
-            context.chat_data[reply_to_self_key] = True
-    
     responses = load_responses()
     found_responses = []
     used_positions = set()
@@ -270,17 +254,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     logger.error(f"Failed to delete old response: {e}")
         
-        reply_params = None
-        if len(found_responses) == 1:
-            # ميزة جديدة: اقتباس الكلمة المفتاحية إذا كانت واحدة فقط
-            keyword = found_responses[0]['keyword']
-            position = found_responses[0]['position']
-            reply_params = ReplyParameters(
-                message_id=target_message.message_id,
-                quote=keyword,
-                quote_position=position
-            )
-        
         if should_delete:
             try:
                 await message.delete()
@@ -291,9 +264,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
-                    reply_parameters=reply_params,
-                    disable_web_page_preview=True,
-                    parse_mode="MarkdownV2"  # ميزة جديدة: تفعيل تنسيق MarkdownV2
+                    reply_to_message_id=target_message.message_id,
+                    disable_web_page_preview=True
                 )
                 context.chat_data[message_key] = {
                     'keywords': current_keywords,
@@ -304,8 +276,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
-                    disable_web_page_preview=True,
-                    parse_mode="MarkdownV2"  # ميزة جديدة: تفعيل تنسيق MarkdownV2
+                    disable_web_page_preview=True
                 )
                 context.chat_data[message_key] = {
                     'keywords': current_keywords,
@@ -315,9 +286,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sent_message = await context.bot.send_message(
                 chat_id=message.chat.id,
                 text=combined_response,
-                reply_parameters=reply_params,
-                disable_web_page_preview=True,
-                parse_mode="MarkdownV2"  # ميزة جديدة: تفعيل تنسيق MarkdownV2
+                reply_to_message_id=target_message.message_id,
+                disable_web_page_preview=True
             )
             context.chat_data[message_key] = {
                 'keywords': current_keywords,

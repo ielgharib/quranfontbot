@@ -195,53 +195,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     should_delete = original_text.lstrip().startswith(('.', '/')) if original_text else False
     
     if message.chat.type == ChatType.PRIVATE and str(update.effective_user.id) not in ADMINS:
-        responses = load_responses()
-        found_responses = []
-        used_positions = set()
-        sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
-        
-        for keyword in sorted_keywords:
-            is_english = any(c.isascii() and c.isalpha() for c in keyword)
-            if is_english:
-                lower_text = original_text.lower()
-                lower_keyword = keyword.lower()
-                start_pos = lower_text.find(lower_keyword)
-            else:
-                start_pos = original_text.find(keyword)
-            if start_pos != -1:
-                end_pos = start_pos + len(keyword)
-                
-                overlap = False
-                for (used_start, used_end) in used_positions:
-                    if not (end_pos <= used_start or start_pos >= used_end):
-                        overlap = True
-                        break
-                
-                if not overlap:
-                    found_responses.append({
-                        'position': start_pos,
-                        'response': responses[keyword],
-                        'keyword': keyword
-                    })
-                    used_positions.add((start_pos, end_pos))
-        
-        if found_responses:
-            found_responses.sort(key=lambda x: x['position'])
-            combined_response = "\n".join([f"» {item['response']}" for item in found_responses])
-            
-            sent_message = await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=combined_response,
-                disable_web_page_preview=True
-            )
-            context.user_data['last_response_id'] = sent_message.message_id
-        else:
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text="عُذرًا، البوت لا يستقبل الرسائل.\nللتواصل واستفسارات الخطوط\nتواصل عبر نقاشات خطوط أحمد الغريب\n@ElgharibFonts",
-                disable_web_page_preview=True
-            )
-        
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            text="عُذرًا، البوت لا يستقبل الرسائل.\nللتواصل واستفسارات الخطوط\nتواصل عبر نقاشات خطوط أحمد الغريب\n@ElgharibFonts",
+            disable_web_page_preview=True
+        )
         return
     
     responses = load_responses()
@@ -561,7 +519,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("👨‍💻 معلومات المدير", callback_data="developer_info")
         ],
         [
-            InlineKeyboardButton("📖 قناة خطوط قرآن", url="https://t.me/QuranFonts")  # افتراض رابط القناة، يمكن تعديله
+            InlineKeyboardButton("📖 قناة خطوط قرآن", url="https://t.me/QuranFont")  # افتراض رابط القناة، يمكن تعديله
         ],
         [
             InlineKeyboardButton("📚 نقاشات خطوط أحمد الغريب", url="https://t.me/ElgharibFonts")
@@ -571,10 +529,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(buttons)
     welcome_message = "\n".join([
             "السلام عليكم ورحمة الله وبركاته 🌿",
+            "اللهمَّ صلِّ وسلِّم على نبينا مُحمَّد",
             "",
-            "حيّاكم الله أخواتي وإخواني 💬",
-            "",
-            "🤖 البوت مخصص لتوفير الخطوط كافةً،",
+            "البوت مخصص لتوفير الخطوط كافةً،",
+            "عن طريق كتابة اسم الخط المطلوب. ",
             "",
             "💬 نقاشات خطوط أحمد الغريب:",
             "@ElgharibFonts",

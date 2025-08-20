@@ -22,15 +22,12 @@ ADMINS = ["634869382"]  # قائمة بآيدي المديرين
 
 # --- ملفات التخزين ---
 RESPONSES_FILE = "responses.json"
-MESSAGES_FILE = "user_messages.json"
-USERS_FILE = "users.json"
 
 # --- حالات المحادثة ---
 (
     ADD_KEYWORD, ADD_RESPONSE,
-    REPLY_TO_USER,
     IMPORT_RESPONSES
-) = range(4)
+) = range(3)
 
 # --- إعداد التسجيل لتصحيح الأخطاء ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -50,24 +47,6 @@ def load_data(filename, default_data):
 def save_data(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
-
-# --- إدارة المستخدمين (للإشعار فقط) ---
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, 'r') as f:
-            return set(json.load(f))
-    return set()
-
-def save_users(users):
-    with open(USERS_FILE, 'w') as f:
-        json.dump(list(users), f)
-
-# --- إدارة رسائل المستخدمين ---
-def load_user_messages():
-    return load_data(MESSAGES_FILE, {"messages": {}})
-
-def save_user_messages(messages_data):
-    save_data(MESSAGES_FILE, messages_data)
 
 # --- إدارة الردود ---
 def load_responses():
@@ -176,69 +155,6 @@ async def process_import_file(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     return ConversationHandler.END
 
-# --- إرسال إشعار للمدير ---
-async def send_admin_notification(context, user):
-    try:
-        user_info = f"👤 مستخدم جديد:\n"
-        user_info += f"🆔 ID: {user.id}\n"
-        user_info += f"📛 الاسم: {user.full_name}\n"
-        if user.username:
-            user_info += f"🔗 اليوزر: @{user.username}\n"
-        
-        await context.bot.send_message(
-            chat_id=ADMINS[0],
-            text=user_info,
-            disable_web_page_preview=True
-        )
-    except Exception as e:
-        logger.error(f"Error sending admin notification: {e}")
-
-# --- إرسال رسالة المستخدم للمدير ---
-async def forward_message_to_admin(context, user, message):
-    try:
-        messages_data = load_user_messages()
-        message_id = str(len(messages_data["messages"]) + 1)
-        
-        messages_data["messages"][message_id] = {
-            "user_id": str(user.id),
-            "user_name": user.full_name,
-            "username": user.username,
-            "message": message.text or message.caption or "[رسالة غير نصية]",
-            "timestamp": str(datetime.now()),
-            "replied": False,
-            "reply_text": None,
-            "reply_timestamp": None
-        }
-        
-        save_user_messages(messages_data)
-        
-        keyboard = [
-            [InlineKeyboardButton("💬 رد على هذه الرسالة", callback_data=f"reply_{message_id}")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        admin_message = f"📨 رسالة جديدة من مستخدم:\n\n"
-        admin_message += f"👤 الاسم: {user.full_name}\n"
-        admin_message += f"🆔 ID: {user.id}\n"
-        if user.username:
-            admin_message += f"🔗 اليوزر: @{user.username}\n"
-        admin_message += f"⏰ الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        admin_message += f"📝 الرسالة: {message.text or message.caption or '[رسالة غير نصية]'}\n"
-        admin_message += f"🔢 رقم الرسالة: {message_id}"
-        
-        await context.bot.send_message(
-            chat_id=ADMINS[0],
-            text=admin_message,
-            reply_markup=reply_markup,
-            disable_web_page_preview=True
-        )
-        
-        return message_id
-        
-    except Exception as e:
-        logger.error(f"Error forwarding message to admin: {e}")
-        return None
-
 # --- التحقق من صلاحيات المشرف ---
 async def is_admin_or_creator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -319,8 +235,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 disable_web_page_preview=True
             )
             context.user_data['last_response_id'] = sent_message.message_id
+        else:
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text="عُذرًا، البوت لا يستقبل الرسائل.\nللتواصل واستفسارات الخطوط\nتواصل عبر نقاشات خطوط أحمد الغريب\n@ElgharibFonts",
+                disable_web_page_preview=True
+            )
         
-        await forward_message_to_admin(context, update.effective_user, message)
         return
     
     responses = load_responses()
@@ -425,61 +346,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "developer_info":
         await show_developer_info(update, context)
         return
-    
-    if str(query.from_user.id) not in ADMINS:
-        await query.edit_message_text("⚠️ هذا الأمر متاح للمديرين فقط!")
-        return
-    
-    if query.data.startswith("reply_"):
-        message_id = query.data.split("_")[1]
-        context.user_data["reply_message_id"] = message_id
-        
-        messages_data = load_user_messages()
-        if message_id in messages_data["messages"]:
-            msg_data = messages_data["messages"][message_id]
-            await query.edit_message_text(
-                f"💬 الرد على الرسالة رقم {message_id}\n\n"
-                f"👤 المستخدم: {msg_data['user_name']}\n"
-                f"📝 الرسالة: {msg_data['message']}\n\n"
-                f"الرجاء كتابة ردك الآن:"
-            )
-            return REPLY_TO_USER
-        else:
-            await query.edit_message_text("❌ لم يتم العثور على الرسالة!")
-
-async def reply_to_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reply_text = update.message.text
-    message_id = context.user_data["reply_message_id"]
-    messages_data = load_user_messages()
-    msg_data = messages_data["messages"][message_id]
-    user_id = msg_data["user_id"]
-    
-    try:
-        formatted_reply = "💬 رد من الإدارة:\n\n{reply_text}".format(reply_text=reply_text)
-        
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=formatted_reply,
-            disable_web_page_preview=True
-        )
-        
-        messages_data["messages"][message_id]["replied"] = True
-        messages_data["messages"][message_id]["reply_text"] = reply_text
-        messages_data["messages"][message_id]["reply_timestamp"] = str(datetime.now())
-        save_user_messages(messages_data)
-        
-        await update.message.reply_text(
-            f"✅ تم إرسال الرد بنجاح للمستخدم {msg_data['user_name']}!"
-        )
-    except Exception as e:
-        await update.message.reply_text(
-            f"❌ فشل في إرسال الرد: {str(e)}"
-        )
-    
-    if "reply_message_id" in context.user_data:
-        del context.user_data["reply_message_id"]
-    
-    return ConversationHandler.END
 
 # --- إضافة رد (نظام المحادثة) ---
 async def start_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -588,8 +454,6 @@ async def remove_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_add_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "temp_keyword" in context.user_data:
         del context.user_data["temp_keyword"]
-    if "reply_message_id" in context.user_data:
-        del context.user_data["reply_message_id"]
     
     await update.message.reply_text(
         "❌ تم إلغاء العملية.",
@@ -692,16 +556,15 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Starting /start command for user {update.effective_user.id}")
     
-    user_id = str(update.effective_user.id)
-    users = load_users()
-    if user_id not in users:
-        users.add(user_id)
-        save_users(users)
-        await send_admin_notification(context, update.effective_user)
-    
     buttons = [
         [
             InlineKeyboardButton("👨‍💻 معلومات المدير", callback_data="developer_info")
+        ],
+        [
+            InlineKeyboardButton("📖 قناة خطوط قرآن", url="https://t.me/QuranFonts")  # افتراض رابط القناة، يمكن تعديله
+        ],
+        [
+            InlineKeyboardButton("📚 نقاشات خطوط أحمد الغريب", url="https://t.me/ElgharibFonts")
         ]
     ]
     
@@ -786,15 +649,6 @@ def main():
             fallbacks=[CommandHandler("cancel", cancel_add_response)]
         )
         application.add_handler(add_response_handler)
-
-        reply_handler = ConversationHandler(
-            entry_points=[CallbackQueryHandler(button_callback, pattern="^reply_")],
-            states={
-                REPLY_TO_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, reply_to_user_message)]
-            },
-            fallbacks=[CommandHandler("cancel", cancel_add_response)]
-        )
-        application.add_handler(reply_handler)
 
         import_handler = ConversationHandler(
             entry_points=[CommandHandler("import", import_responses)],

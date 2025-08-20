@@ -15,13 +15,6 @@ import json
 from datetime import datetime
 import logging
 from telegram.constants import ChatType
-import subprocess
-from PIL import Image
-import tempfile
-from fontTools import ttLib
-import zipfile
-import rarfile  # Requires 'unrar' installed
-import time  # For timestamp in file names
 
 # --- الإعدادات الأساسية ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN") or "7780931009:AAFkwcVo6pbABBS5NiNuAzi0-P13GQB3hiw"  # النسخة الاحتياطية لأغراض الاختبار
@@ -36,10 +29,8 @@ USERS_FILE = "users.json"
 (
     ADD_KEYWORD, ADD_RESPONSE,
     REPLY_TO_USER,
-    IMPORT_RESPONSES,
-    OPTIONS_MENU, CONVERT_TO_SVG, CONVERT_FONT, EXTRACT_ARCHIVE, CHOOSE_FONT_FORMAT,
-    WAIT_FOR_SVG_IMAGES
-) = range(10)
+    IMPORT_RESPONSES
+) = range(4)
 
 # --- إعداد التسجيل لتصحيح الأخطاء ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -266,14 +257,6 @@ async def is_admin_or_creator(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     return False
 
-# --- تحقق ما إذا كان يمكن استخدام الأداة ---
-def can_use_tool(chat_type, user_id):
-    if chat_type == ChatType.PRIVATE:
-        return True
-    elif chat_type in [ChatType.GROUP, ChatType.SUPERGROUP] and str(user_id) in ADMINS:
-        return True
-    return False
-
 # --- معالجة الرسائل المحدثة ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message and not update.edited_message:
@@ -302,8 +285,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
         
         for keyword in sorted_keywords:
-            if keyword in original_text:
+            is_english = any(c.isascii() and c.isalpha() for c in keyword)
+            if is_english:
+                lower_text = original_text.lower()
+                lower_keyword = keyword.lower()
+                start_pos = lower_text.find(lower_keyword)
+            else:
                 start_pos = original_text.find(keyword)
+            if start_pos != -1:
                 end_pos = start_pos + len(keyword)
                 
                 overlap = False
@@ -341,8 +330,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sorted_keywords = sorted(responses.keys(), key=len, reverse=True)
     
     for keyword in sorted_keywords:
-        if keyword in original_text:
+        is_english = any(c.isascii() and c.isalpha() for c in keyword)
+        if is_english:
+            lower_text = original_text.lower()
+            lower_keyword = keyword.lower()
+            start_pos = lower_text.find(lower_keyword)
+        else:
             start_pos = original_text.find(keyword)
+        if start_pos != -1:
             end_pos = start_pos + len(keyword)
             overlap = False
             for (used_start, used_end) in used_positions:
@@ -427,17 +422,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Received callback query: {query.data} from user {query.from_user.id}")
     await query.answer()
     
-    if query.data == "options_menu":
-        if not can_use_tool(update.effective_chat.type, query.from_user.id):
-            await query.edit_message_text("⚠️ لوحة الخيارات متاحة فقط في الخاص أو للمديرين في المجموعات!")
-            return
-        await show_options_menu(update, context)
-        return OPTIONS_MENU
-    
     if query.data == "developer_info":
-        if not can_use_tool(update.effective_chat.type, query.from_user.id):
-            await query.edit_message_text("⚠️ معلومات المدير متاحة فقط في الخاص أو للمديرين في المجموعات!")
-            return
         await show_developer_info(update, context)
         return
     
@@ -703,395 +688,6 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Calling start function")
     return await start(update, context)
 
-# --- لوحة الخيارات الجديدة ---
-async def show_options_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    keyboard = [
-        [KeyboardButton("🖼️ تحويل صورة إلى SVG")],
-        [KeyboardButton("🔤 تحويل صيغة خط (TTF ↔ OTF)")],
-        [KeyboardButton("📦 فك ضغط ملفات (ZIP/RAR)")],
-        [KeyboardButton("🔄 إعادة تشغيل البوت")],
-        [KeyboardButton("🔙 رجوع")]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-    
-    if query:
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text="📋 اختر الوظيفة المرغوبة:",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.message.reply_text(
-            "📋 اختر الوظيفة المرغوبة:",
-            reply_markup=reply_markup
-        )
-    return OPTIONS_MENU
-
-async def handle_options_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    choice = update.message.text
-    
-    # تعديل هنا: إضافة تحقق للزر "🎛️ العودة إلى القائمة الرئيسية"
-    if choice == "🎛️ العودة إلى القائمة الرئيسية":
-        await show_options_menu(update, context)
-        return OPTIONS_MENU
-    
-    if choice == "🔙 رجوع":
-        return await start(update, context)
-    
-    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
-        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
-        return ConversationHandler.END
-    
-    elif choice == "🖼️ تحويل صورة إلى SVG":
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-        "📤 يمكنك إرسال ما يصل إلى 50 صورة JPG/JPEG دفعة واحدة.\n"
-        "⚠️ يجب أن تكون الصور بخلفية بيضاء وكتابة سوداء (جودة متوسطة إلى عالية).\n"
-        "🚀 بعد إرسال جميع الصور، اضغط على 'بدء التحويل' لبدء العملية.\n\n"
-        "الرجاء إرسال الصور الآن:",
-        reply_markup=reply_markup
-    )
-    # تهيئة قائمة لتخزين الصور
-        context.user_data['svg_images'] = []
-        return WAIT_FOR_SVG_IMAGES
-    
-    elif choice == "🔤 تحويل صيغة خط (TTF ↔ OTF)":
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            "📤 أرسل ملف خط TTF أو OTF للتحويل إلى الصيغة الأخرى.",
-            reply_markup=reply_markup
-        )
-        return CONVERT_FONT
-    
-    elif choice == "📦 فك ضغط ملفات (ZIP/RAR)":
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            "📤 أرسل ملف ZIP أو RAR (حتى 500MB) لفك الضغط.",
-            reply_markup=reply_markup
-        )
-        return EXTRACT_ARCHIVE
-    
-    elif choice == "🔄 إعادة تشغيل البوت":
-        await restart_bot(update, context)
-        return ConversationHandler.END
-    
-    return OPTIONS_MENU
-
-# --- وظيفة تحويل الصورة إلى SVG ---
-async def wait_for_svg_images(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
-        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
-        return ConversationHandler.END
-    
-    if update.message.text == "🚀 بدء التحويل":
-        if not context.user_data.get('svg_images'):
-            await update.message.reply_text("❌ لا توجد صور لتحويلها.")
-            return await show_options_menu(update, context)
-        
-        await update.message.reply_text("⏳ جاري تحويل الصور إلى SVG... قد تستغرق العملية بعض الوقت.")
-        
-        for i, img_path in enumerate(context.user_data['svg_images'], 1):
-            try:
-                with tempfile.NamedTemporaryFile(suffix='.pbm', delete=False) as pbm_file:
-                    pbm_path = pbm_file.name
-                
-                svg_filename = f"@ElgharibFontsBot - {i}.svg"
-                with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as svg_file:
-                    svg_path = svg_file.name
-                
-                # تحويل الصورة
-                img = Image.open(img_path).convert("L").point(lambda x: 0 if x < 128 else 255, "1")
-                img.save(pbm_path)
-                # تطوير: إضافة خيارات potrace لتحسين الجودة (opttolerance لدقة أعلى، turdsize لإزالة الشوائب الصغيرة، tight لإزالة الفراغات)
-                subprocess.run(["potrace", pbm_path, "-s", "--opttolerance", "0.2", "--turdsize", "2", "--tight", "-o", svg_path], check=True)
-                
-                # إرسال الملف
-                await context.bot.send_document(
-                    chat_id=update.effective_chat.id,
-                    document=open(svg_path, 'rb'),
-                    filename=svg_filename,
-                    caption="تم التحويل بواسطة @ElgharibFontsBot"
-                )
-                
-                # تنظيف الملفات المؤقتة
-                os.remove(pbm_path)
-                os.remove(svg_path)
-                os.remove(img_path)
-                
-            except Exception as e:
-                logger.error(f"Error converting image {i}: {e}")
-                await update.message.reply_text(f"❌ خطأ في تحويل الصورة {i}: {str(e)}")
-        
-        # تنظيف البيانات
-        if 'svg_images' in context.user_data:
-            del context.user_data['svg_images']
-        
-        keyboard = [["🎛️ العودة إلى القائمة الرئيسية"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            f"✅ تم تحويل جميع الصور بنجاح!",
-            reply_markup=reply_markup
-        )
-        # تعديل هنا: غير return ConversationHandler.END إلى return OPTIONS_MENU
-        return OPTIONS_MENU
-
-    if update.message.text == "🔙 رجوع":
-        # تنظيف الملفات المؤقتة
-        for img_path in context.user_data.get('svg_images', []):
-            if os.path.exists(img_path):
-                os.remove(img_path)
-        if 'svg_images' in context.user_data:
-            del context.user_data['svg_images']
-        return await show_options_menu(update, context)
-    
-    if update.message.text == "❌ إلغاء":
-        # تنظيف الملفات المؤقتة
-        for img_path in context.user_data.get('svg_images', []):
-            if os.path.exists(img_path):
-                os.remove(img_path)
-        if 'svg_images' in context.user_data:
-            del context.user_data['svg_images']
-        await update.message.reply_text("تم إلغاء العملية.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
-    
-    photos = update.message.photo if update.message.photo else []
-    documents = [update.message.document] if update.message.document else []
-    
-    files = []
-    if photos:
-        highest_quality_photo = max(photos, key=lambda p: p.file_size, default=None)
-        if highest_quality_photo:
-            files = [await highest_quality_photo.get_file()]
-    elif documents:
-        files = [await doc.get_file() for doc in documents if doc.file_name.lower().endswith(('.jpg', '.jpeg'))]
-    
-    if not files:
-        await update.message.reply_text("⚠️ يرجى إرسال صورة JPG/JPEG صالحة.")
-        return WAIT_FOR_SVG_IMAGES
-    
-    # تخزين الملفات المؤقتة
-    for file in files:
-        temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
-        await file.download_to_drive(temp_file.name)
-        context.user_data['svg_images'].append(temp_file.name)
-    
-    remaining = 50 - len(context.user_data['svg_images'])
-    
-    if remaining <= 0:
-        keyboard = [["🚀 بدء التحويل"], ["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            "✅ وصلت إلى الحد الأقصى (50 صورة). اضغط على 'بدء التحويل' لبدء العملية.",
-            reply_markup=reply_markup
-        )
-        return WAIT_FOR_SVG_IMAGES
-    else:
-        keyboard = [["🚀 بدء التحويل"], ["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text(
-            f"📥 تم استلام {len(context.user_data['svg_images'])} صورة. يمكنك إرسال {remaining} صورة أخرى أو الضغط على 'بدء التحويل'.",
-            reply_markup=reply_markup
-        )
-        return WAIT_FOR_SVG_IMAGES
-    
-# --- وظيفة تحويل صيغة الخط ---
-async def convert_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
-        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
-        return ConversationHandler.END
-    
-    if update.message.text == "🔙 رجوع":
-        return await show_options_menu(update, context)
-    
-    if update.message.text == "❌ إلغاء":
-        await update.message.reply_text("تم إلغاء العملية.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
-    
-    if not update.message.document:
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text("⚠️ يرجى إرسال ملف خط TTF أو OTF.", reply_markup=reply_markup)
-        return CONVERT_FONT
-    
-    doc = update.message.document
-    file_name = doc.file_name.lower()
-    
-    if not file_name.endswith(('.ttf', '.otf')):
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text("⚠️ الصيغة غير مدعومة. فقط TTF أو OTF.", reply_markup=reply_markup)
-        return CONVERT_FONT
-    
-    context.user_data["font_file_id"] = doc.file_id
-    context.user_data["font_file_name"] = doc.file_name
-    
-    keyboard = [["إلى TTF", "إلى OTF"], ["🔙 رجوع"], ["❌ إلغاء"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-    
-    await update.message.reply_text("اختر الصيغة المرغوبة:", reply_markup=reply_markup)
-    return CHOOSE_FONT_FORMAT
-
-async def choose_font_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
-        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
-        return ConversationHandler.END
-    
-    choice = update.message.text
-    
-    if choice == "🔙 رجوع":
-        return await show_options_menu(update, context)
-    
-    if choice == "❌ إلغاء":
-        await update.message.reply_text("تم إلغاء العملية.", reply_markup=ReplyKeyboardRemove())
-        if "font_file_id" in context.user_data:
-            del context.user_data["font_file_id"]
-        if "font_file_name" in context.user_data:
-            del context.user_data["font_file_name"]
-        return ConversationHandler.END
-    
-    if choice not in ["إلى TTF", "إلى OTF"]:
-        keyboard = [["إلى TTF", "إلى OTF"], ["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-        await update.message.reply_text("⚠️ اختيار غير صالح.", reply_markup=reply_markup)
-        return CHOOSE_FONT_FORMAT
-    
-    target_ext = '.ttf' if choice == "إلى TTF" else '.otf'
-    file_id = context.user_data.get("font_file_id")
-    file_name = context.user_data.get("font_file_name")
-    
-    if not file_id or not file_name:
-        await update.message.reply_text("❌ خطأ: الملف مفقود. يرجى البدء من جديد.")
-        return await show_options_menu(update, context)
-    
-    try:
-        file = await context.bot.get_file(file_id)
-        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(file_name)[1], delete=False) as input_file:
-            await file.download_to_drive(input_file.name)
-            input_path = input_file.name
-        
-        try:
-            font = ttLib.TTFont(input_path)
-        except Exception as e:
-            logger.error(f"Error loading font file: {e}")
-            await update.message.reply_text(f"❌ خطأ في تحميل ملف الخط: {str(e)}")
-            os.remove(input_path)
-            return await show_options_menu(update, context)
-        
-        with tempfile.NamedTemporaryFile(suffix=target_ext, delete=False) as output_file:
-            output_path = output_file.name
-        
-        try:
-            font.save(output_path)
-        except Exception as e:
-            logger.error(f"Error saving font file: {e}")
-            await update.message.reply_text(f"❌ خطأ في حفظ ملف الخط: {str(e)}")
-            os.remove(input_path)
-            os.remove(output_path)
-            return await show_options_menu(update, context)
-        
-        await context.bot.send_document(
-            chat_id=update.effective_chat.id,
-            document=open(output_path, 'rb'),
-            filename=os.path.splitext(file_name)[0] + target_ext,
-            caption="تم التحويل بواسطة @ElgharibFontsBot"
-        )
-        
-        os.remove(input_path)
-        os.remove(output_path)
-        
-        if "font_file_id" in context.user_data:
-            del context.user_data["font_file_id"]
-        if "font_file_name" in context.user_data:
-            del context.user_data["font_file_name"]
-        
-    except Exception as e:
-        logger.error(f"Error during font conversion: {e}")
-        await update.message.reply_text(f"❌ خطأ أثناء التحويل: {str(e)}")
-        if os.path.exists("input_path"):
-            os.remove("input_path")
-        if os.path.exists("output_path"):
-            os.remove("output_path")
-    
-    return await show_options_menu(update, context)
-
-# --- وظيفة فك ضغط الملفات ---
-async def extract_archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not can_use_tool(update.effective_chat.type, update.effective_user.id):
-        await update.message.reply_text("⚠️ هذه الوظيفة متاحة فقط في الخاص أو للمديرين في المجموعات!")
-        return ConversationHandler.END
-    
-    if update.message.text == "🔙 رجوع":
-        return await show_options_menu(update, context)
-    
-    if update.message.text == "❌ إلغاء":
-        await update.message.reply_text("تم إلغاء العملية.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
-    
-    if not update.message.document:
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text("⚠️ يرجى إرسال ملف ZIP أو RAR (حتى 500MB).", reply_markup=reply_markup)
-        return EXTRACT_ARCHIVE
-    
-    doc = update.message.document
-    file_name = doc.file_name.lower()
-    
-    if not file_name.endswith(('.zip', '.rar')):
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text("⚠️ الصيغة غير مدعومة. فقط ZIP أو RAR.", reply_markup=reply_markup)
-        return EXTRACT_ARCHIVE
-    
-    if doc.file_size > 500 * 1024 * 1024:  # 500MB
-        keyboard = [["🔙 رجوع"], ["❌ إلغاء"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-        await update.message.reply_text("⚠️ الملف أكبر من 500MB.", reply_markup=reply_markup)
-        return EXTRACT_ARCHIVE
-    
-    try:
-        file = await doc.get_file()
-        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(file_name)[1], delete=False) as archive_file:
-            await file.download_to_drive(archive_file.name)
-            archive_path = archive_file.name
-        
-        extract_dir = tempfile.mkdtemp()
-        
-        if file_name.endswith('.zip'):
-            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
-        elif file_name.endswith('.rar'):
-            with rarfile.RarFile(archive_path, 'r') as rar_ref:
-                rar_ref.extractall(extract_dir)
-        
-        # إرسال الملفات المفكوكة
-        for root, _, files in os.walk(extract_dir):
-            for f in files:
-                file_path = os.path.join(root, f)
-                await context.bot.send_document(
-                    chat_id=update.effective_chat.id,
-                    document=open(file_path, 'rb'),
-                    caption="تم الفك بواسطة @ElgharibFontsBot"
-                )
-        
-        # تنظيف
-        os.remove(archive_path)
-        for root, dirs, files in os.walk(extract_dir, topdown=False):
-            for f in files:
-                os.remove(os.path.join(root, f))
-            for d in dirs:
-                os.rmdir(os.path.join(root, d))
-        os.rmdir(extract_dir)
-        
-    except Exception as e:
-        logger.error(f"Error extracting archive: {e}")
-        await update.message.reply_text(f"❌ خطأ أثناء فك الضغط: {str(e)}")
-    
-    return await show_options_menu(update, context)
-
 # --- بدء البوت ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Starting /start command for user {update.effective_user.id}")
@@ -1105,7 +701,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     buttons = [
         [
-            InlineKeyboardButton("🎛️ أدوات البوت", callback_data="options_menu"),
             InlineKeyboardButton("👨‍💻 معلومات المدير", callback_data="developer_info")
         ]
     ]
@@ -1117,10 +712,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "حيّاكم الله أخواتي وإخواني 💬",
             "",
             "🤖 البوت مخصص لتوفير الخطوط كافةً،",
-            "ولبعض المهام المتنوعة مثل:",
-            "1️⃣ تحويل الصورة إلى فيكتور SVG",
-            "2️⃣ فك ضغط الملفات واستخراجها",
-            "3️⃣ تحويل صيغ الخطوط من TTF إلى OTF",
             "",
             "💬 نقاشات خطوط أحمد الغريب:",
             "@ElgharibFonts",
@@ -1146,9 +737,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔹 /start - بدء استخدام البوت وعرض رسالة الترحيب",
         "🔹 /help - عرض هذه القائمة",
         "",
-        "🎛️ أوامر الخيارات:",
-        "🔸 /options - عرض لوحة الخيارات (تحويل الصور، الخطوط، إلخ)",
-        "",
         "🛠️ أوامر المديرين:",
         "🔹 /add - إضافة رد جديد",
         "🔹 /remove <الكلمة> - حذف رد",
@@ -1160,8 +748,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     buttons = []
-    
-    buttons.append([InlineKeyboardButton("🎛️ أدوات البوت", callback_data="options_menu")])
     
     reply_markup = InlineKeyboardMarkup(buttons)
     
@@ -1218,19 +804,6 @@ def main():
             fallbacks=[CommandHandler("cancel", cancel_add_response)]
         )
         application.add_handler(import_handler)
-
-        options_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(button_callback, pattern="^options_menu$")],
-    states={
-        OPTIONS_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_options_choice)],
-        WAIT_FOR_SVG_IMAGES: [MessageHandler(filters.ALL & ~filters.COMMAND, wait_for_svg_images)],
-        CONVERT_FONT: [MessageHandler(filters.ALL & ~filters.COMMAND, convert_font)],
-        CHOOSE_FONT_FORMAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_font_format)],
-        EXTRACT_ARCHIVE: [MessageHandler(filters.ALL & ~filters.COMMAND, extract_archive)]
-    },
-    fallbacks=[CommandHandler("cancel", cancel_add_response)]
-       )
-        application.add_handler(options_handler)
 
         # --- ثالثاً: أضف الـ CallbackQueryHandler العام ---
         application.add_handler(CallbackQueryHandler(button_callback))

@@ -15,6 +15,7 @@ import json
 from datetime import datetime
 import logging
 from telegram.constants import ChatType
+from telegram import ParseMode
 
 # --- الإعدادات الأساسية ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN") or "7780931009:AAFkwcVo6pbABBS5NiNuAzi0-P13GQB3hiw"  # النسخة الاحتياطية لأغراض الاختبار
@@ -235,7 +236,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     found_responses.sort(key=lambda x: x['position'])
     
     if found_responses:
-        combined_response = "\n".join([f"» {item['response']}" for item in found_responses])
+        # إذا كانت هناك كلمة مفتاحية واحدة فقط، استخدم تنسيق الاقتباس
+        if len(found_responses) == 1:
+            keyword = found_responses[0]['keyword']
+            response = found_responses[0]['response']
+            combined_response = f"> {keyword}\n\n{response}"
+        else:
+            # إذا كانت هناك أكثر من كلمة مفتاحية، استخدم التنسيق العادي
+            combined_response = "\n".join([f"» {item['response']}" for item in found_responses])
+        
         target_message = message.reply_to_message if message.reply_to_message else message
         
         message_key = f"{message.chat.id}_{message.message_id}"
@@ -265,6 +274,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=message.chat.id,
                     text=combined_response,
                     reply_to_message_id=target_message.message_id,
+                    parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
                     disable_web_page_preview=True
                 )
                 context.chat_data[message_key] = {
@@ -276,6 +286,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sent_message = await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=combined_response,
+                    parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
                     disable_web_page_preview=True
                 )
                 context.chat_data[message_key] = {
@@ -287,6 +298,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=message.chat.id,
                 text=combined_response,
                 reply_to_message_id=target_message.message_id,
+                parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
                 disable_web_page_preview=True
             )
             context.chat_data[message_key] = {
@@ -331,7 +343,7 @@ async def add_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"🔹 الكلمة المحددة: {keyword}\n\n"
-        "الرجاء إرسال الرد الذي تريد ربطه بهذه الكلمة:\n"
+        "الرجاء إرسال الرد الذي تريد ربطه بهذه الكلمة (يمكن استخدام تنسيق Markdown):\n"
         "أو /cancel لإلغاء العملية",
         disable_web_page_preview=True
     )
@@ -371,6 +383,7 @@ async def add_response_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"الكلمة: {keyword}\n"
         f"الرد: {response}\n\n"
         f"📊 إجمالي الردود الآن: {len(responses)}",
+        parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
         disable_web_page_preview=True
     )
     return ConversationHandler.END
@@ -456,13 +469,15 @@ async def show_developer_info(update: Update, context: ContextTypes.DEFAULT_TYPE
                 photo=file.file_id,
                 caption="\n".join(message),
                 reply_markup=reply_markup,
-                disable_notification=True
+                disable_notification=True,
+                parse_mode=ParseMode.MARKDOWN  # تفعيل تنسيق النص
             )
             logger.info("Successfully sent developer photo")
         else:
             await update.message.reply_text(
                 "\n".join(message),
                 reply_markup=reply_markup,
+                parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
                 disable_web_page_preview=True
             )
             
@@ -470,6 +485,7 @@ async def show_developer_info(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error getting developer info: {e}")
         await update.message.reply_text(
             f"❌ حدث خطأ أثناء جلب معلومات المطور: {str(e)}",
+            parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
             disable_web_page_preview=True
         )
 
@@ -484,7 +500,7 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await is_admin_or_creator(update, context):
             logger.info(f"User {user_id} is not admin or creator")
             await update.message.reply_text(
-                "⚠️ هذا الأمر متاح فقط لمشرفي المجموعة أو المديرين!",
+                "�OR هذا الأمر متاح فقط لمشرفي المجموعة أو المديرين!",
                 disable_web_page_preview=True
             )
             return
@@ -505,6 +521,7 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Sending restart confirmation")
     await update.message.reply_text(
         "🔄 تم إعادة تنشيط البوت وتحسين سرعته.\nتحياتي؛ بوت خطوط أحمد الغريب @ElgharibFontsBot",
+        parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
         disable_web_page_preview=True
     )
     logger.info("Calling start function")
@@ -543,7 +560,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         welcome_message,
         reply_markup=reply_markup,
-        parse_mode="Markdown",
+        parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
         disable_web_page_preview=True
     )
     logger.info("Welcome message sent successfully")
@@ -575,6 +592,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "\n".join(help_text),
         reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN,  # تفعيل تنسيق النص
         disable_web_page_preview=True
     )
 
@@ -593,9 +611,6 @@ def main():
         application.add_handler(CommandHandler("restart", restart_bot))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("cancel", cancel_add_response))
-
-
-        # أضف أي أوامر أخرى هنا إذا كانت موجودة
 
         # --- ثانياً: أضف الـ ConversationHandlers (التي تبدأ بأوامر أو callbacks) ---
         add_response_handler = ConversationHandler(
@@ -630,9 +645,8 @@ def main():
 
     except Exception as e:
         print(f"❌ Error starting the bot: {str(e)}")
-        logger.error(f"Error in main: {str(e)}")
+        logger.error(f"Error in main: {e}")
         raise
 
 if __name__ == "__main__":
-
     main()
